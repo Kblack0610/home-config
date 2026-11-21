@@ -574,6 +574,7 @@ def lan_pass(snap, tally):
             continue
         if serves_pool(cfg, m.host, m.runner):
             if admitted >= cfg["pool_max_admitted"]:
+                out.append(m._replace(action="hold", runner="", why=m.why + f"; pool at its {cfg['pool_max_admitted']} cap"))
                 continue
             admitted += 1
         out.append(m)
@@ -611,7 +612,7 @@ def lan_host(snap, host, tally):
             if clear:
                 builds.remove(need)
         tally = tally._replace(admitted=tally.admitted - stepped, floor=tally.floor - stepped, builds=tuple(builds))
-        back = returning(snap, host, mine, off) if v in ("ROOM", "STEADY") and host not in snap.pins else []
+        back = returning(snap, host, mine, off, v, why)
         off = [n for n in off if n not in dict(back)]
         moves = [Action(host, "withhold", n, v, w) for n, w in aside] + \
                 [Action(host, "admit", n, v, w) for n, w in builds_in + back]
@@ -621,22 +622,28 @@ def lan_host(snap, host, tally):
     return moves, plan, tally
 
 
-def returning(snap, host, mine, off):
+def returning(snap, host, mine, off, v, why):
     """[(test slot, why)]: the withheld test slots in off of each pair whose build slot stepped
-    aside within cooldown_seconds and now reads quiet. They come back together, past the host's
-    cooldown, as they stepped aside: the cores are the ones the build just gave up, so they add
-    no load the readings have not seen (2026-11-21: one per cooldown left slot 4 idle 20 min
-    with 16 jobs queued). A build slot withheld longer ago returns nothing; the load rule moves
-    its tests."""
+    aside within cooldown_seconds and now reads quiet, at most one per waiting job. They come
+    back together, regardless of the host's cooldown, as they stepped aside: the cores are the
+    ones the build just gave up, so they add no load the readings have not seen (2026-11-21:
+    one per cooldown left slot 4 idle 20 min with 16 jobs queued). Only on readings that show
+    it (ROOM, or a STEADY that has them), on no pinned host, and only while a job waits, as the
+    load rule admits. A build slot withheld longer ago, or before a restart (last_action is in
+    memory), returns nothing; the load rule moves its tests."""
+    cfg = snap.cfg
+    if v not in ("ROOM", "STEADY") or why == "no reading" or host in snap.pins:
+        return []
+    demand = len(snap.waiting) + shared_demand(cfg, host, snap.runners, snap.shared_waiting)
     by = {slot_of(n): n for n in mine}
     out = []
     for b, tests in sorted(pairs(snap.cfg, host).items()):
         n = by.get(b)
         if n and mine[n]["withheld"] and not mine[n]["busy"] and \
-                snap.now - snap.last_action.get(n, 0) < snap.cfg["cooldown_seconds"]:
+                snap.now - snap.last_action.get(n, 0) < cfg["cooldown_seconds"]:
             out += [(by[t], f"pair {b}'s build slot stepped aside, its test slots return")
                     for t in tests if by.get(t) in off]
-    return out
+    return out[:demand]
 
 
 def paid_build_open(snap, need):
@@ -2086,7 +2093,9 @@ def render_budget(b):
 
 
 def cycle(cfg, last_action, tracked=None, budget=None, local=None):
-    """One reading and its actions. local is the LocalSeats to admit local runs to, None not to."""
+    """One reading and its actions. local is the LocalSeats to admit local runs to, None not to.
+    last_action is {host or runner: when it last moved}: hosts for the cooldown, runners for
+    returning(); it lives in memory only."""
     now = time.time()
     try:
         hosts, runners, waiting = observe(pools(cfg))

@@ -2092,6 +2092,12 @@ class LanPairTest(unittest.TestCase):
         self.assertEqual(self.run_lan("ii...", [UNITY_JOB] * 16, lan=HOT, last=last)[0], [])
         self.assertEqual(self.run_lan("ii...", [UNITY_JOB] * 16, lan=FULL, last=last)[0], [("withhold", 1)])
         self.assertEqual(self.run_lan("ii...", [UNITY_JOB] * 16, last=last, pins={"ms-a2": 2})[0], [])
+        # Nothing waiting returns nothing; one job returns one slot.
+        self.assertEqual(self.run_lan("ii...", [], last=last)[0], [])
+        self.assertEqual(self.run_lan("ii...", [UNITY_JOB], last=last)[0], [("admit", 3)])
+        # No readings: no admit on a guess.
+        blind = {k: v for k, v in COOL.items() if k != "idle"}
+        self.assertEqual(self.run_lan("ii...", [UNITY_JOB] * 16, lan=blind, last=last)[0], [])
         # A waiting build claims the pair instead.
         self.assertEqual(self.run_lan("ii...", [BUILD_JOB], last=last)[0], [("admit", 5)])
         # The pool's cap holds the returns.

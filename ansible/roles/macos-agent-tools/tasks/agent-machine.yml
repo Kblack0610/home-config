@@ -16,15 +16,17 @@
   become: true
 
 # `mdutil -X` deletes the index. `-E` alone left 42 GB in Store-V2/DeadFiles on
-# the mini, which nothing cleared with indexing off.
+# the mini, which nothing cleared with indexing off. `-X` also deletes
+# VolumeConfiguration.plist, where `-i off` is kept, so it runs first: run after
+# the off, it left the next boot to index the data volume again (2026-11-20).
 - name: Turn off Spotlight and remove its index
   become: true
   ansible.builtin.shell: |
     set -uo pipefail
     for vol in / /System/Volumes/Data; do
       if mdutil -s "$vol" 2>/dev/null | grep -q 'Indexing enabled'; then
-        mdutil -i off "$vol" >/dev/null 2>&1 || true
         mdutil -X "$vol" </dev/null >/dev/null 2>&1 || true
+        mdutil -i off "$vol" >/dev/null 2>&1 || true
         echo CHANGED
       fi
       if mdutil -s "$vol" 2>/dev/null | grep -q 'Indexing enabled'; then

@@ -28,6 +28,7 @@ $real_ps "\$@"
 echo "Unity -batchmode -quit -projectPath $W/ucp-unity -buildTarget OSXUniversal"
 echo "git -C $W/ucp-git fetch --tags"
 echo "bash -c cd '$W/ucp-quoted';make"
+echo "Unity -batchmode -quit -projectPath $C/Builds/release-tree/mac-unity -buildTarget OSXUniversal"
 STUB
 cat > "$t/bin/lsof" <<STUB
 #!/bin/sh
@@ -97,5 +98,30 @@ gone "another runner's job does not make this one busy" "$W/ucp-recent"
 setup; TREES=11 START_PCT=0 PER_TREE=1 BUSY_BELOW=11 run
 gone "a job that starts mid-run: the removal before it went" "$W/ucp-stale"
 kept "  and a tree written in the last hour is asked again and stays" "$W/ucp-recent"
+
+# A release job's clone in the checkout's Builds/release-tree, its .git a directory. They held
+# 136G at 97% full on 2026-11-20, when only the worktrees beside the checkout were swept.
+rel() { # name, age of its Library
+    mkdir -p "$C/Builds/release-tree/$1/.git" "$C/Builds/release-tree/$1/Library"
+    touch -d "$2" "$C/Builds/release-tree/$1/Library" "$C/Builds/release-tree/$1"
+}
+RT="$C/Builds/release-tree"
+release_setup() {
+    setup
+    rel mac-stale '10 days ago'
+    rel ios-fresh '2 days ago'
+    rel mac-unity '10 days ago'
+    mkdir -p "$RT/notes" "$RT/.pruned-ios-half/Library"; touch -d '10 days ago' "$RT/notes"
+}
+release_setup; run
+gone "a release tree unused for a week goes" "$RT/mac-stale"
+gone "  a half-done release-tree removal is finished" "$RT/.pruned-ios-half"
+kept "  one used this week stays with room on the disk" "$RT/ios-fresh"
+kept "  one Unity has open stays" "$RT/mac-unity"
+kept "  a directory there that is not a clone stays" "$RT/notes"
+release_setup; START_PCT=0 run
+gone "low disk: an idle release tree goes" "$RT/ios-fresh"
+kept "  never the checkout" "$C/Library"
+kept "  never a release tree in use" "$RT/mac-unity"
 
 exit $fail

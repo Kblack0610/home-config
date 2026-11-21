@@ -27,6 +27,13 @@ spec:
           nodeSelector:
             kubernetes.io/hostname: asus-laptop
             storage.role/nas: "true"
+          # Its local-path PV pins it to one node, so it runs there even when that
+          # node is quarantined: the backup is how its state leaves the node
+          # (docs/host-tiers.md, Quarantine).
+          tolerations:
+            - key: kblab.me/degraded
+              operator: Exists
+              effect: NoSchedule
           restartPolicy: Never
           containers:
             - name: vmbackup

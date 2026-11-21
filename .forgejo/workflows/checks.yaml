@@ -338,7 +338,29 @@ jobs:
       # A gate that fails on something production does not build teaches people to
       # ignore the gate.
       - name: Flux entry points build
-        run: scripts/check-kustomize-builds.sh rendered.yaml  # rendered.yaml is read by the timeZone step below, so it checks exactly this render
+        run: scripts/check-kustomize-builds.sh rendered.yaml  # rendered.yaml is read by the CronJob steps below, so they check exactly this render
+
+      # A backup CronJob that reads a PVC can only run on the node holding that
+      # local-path PV. When cluster-janitor quarantines the node (kblab.me/degraded,
+      # docs/host-tiers.md) a job without the toleration stays Pending and the state
+      # never leaves the flaky node: the vaultwarden and actual-budget backups missed
+      # 2026-11-21 that way (ar-3613).
+      - name: Every backup CronJob that reads a PVC tolerates the quarantine taint
+        run: |
+          set -eu
+          # namespace/name, one per line, for each backup CronJob with a PVC volume and no kblab.me/degraded toleration.
+          untolerated() { yq ea -N 'select(.kind == "CronJob" and (.metadata.name | test("backup")) and ([.spec.jobTemplate.spec.template.spec.volumes[]? | select(has("persistentVolumeClaim"))] | length) > 0 and ([.spec.jobTemplate.spec.template.spec.tolerations[]? | select(.key == "kblab.me/degraded")] | length) == 0) | (.metadata.namespace // "-") + "/" + .metadata.name' -; }
+          # Negative control: the filter must catch a planted backup CronJob with a PVC and no toleration, or it checks nothing.
+          job='kind: CronJob\nmetadata:\n  name: planted-backup\n  namespace: ci\nspec:\n  jobTemplate:\n    spec:\n      template:\n        spec:\n          volumes:\n            - name: data\n              persistentVolumeClaim:\n                claimName: data\n'
+          planted=$(printf "$job" | untolerated)
+          [ "$planted" = "ci/planted-backup" ] || { echo "FAIL: the filter missed a planted backup CronJob with no toleration (got '$planted')"; exit 1; }
+          tolerated=$(printf "$job"'          tolerations:\n            - key: kblab.me/degraded\n              operator: Exists\n              effect: NoSchedule\n' | untolerated)
+          [ -z "$tolerated" ] || { echo "FAIL: the filter flagged a backup CronJob that tolerates the taint (got '$tolerated')"; exit 1; }
+          found=$(yq ea -N 'select(.kind == "CronJob" and (.metadata.name | test("backup")) and ([.spec.jobTemplate.spec.template.spec.volumes[]? | select(has("persistentVolumeClaim"))] | length) > 0) | .metadata.name' rendered.yaml | grep -c . || true)
+          missing=$(untolerated < rendered.yaml)
+          [ "$found" -gt 0 ] || { echo "FAIL: no backup CronJob with a PVC rendered, so the check checked nothing"; exit 1; }
+          [ -z "$missing" ] || { echo "FAIL: these backup CronJobs read a PVC but do not tolerate kblab.me/degraded:NoSchedule, so a quarantined node strands their backup (docs/host-tiers.md, Quarantine):"; echo "$missing"; exit 1; }
+          echo "ok: $found backup CronJobs read a PVC, each tolerates kblab.me/degraded"
 
       # The controller and kube-state-metrics must agree on a CronJob's zone. With no
       # spec.timeZone the k3s controller schedules in its host's zone (Pacific) while KSM

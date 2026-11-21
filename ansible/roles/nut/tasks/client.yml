@@ -44,6 +44,29 @@
     group: "{{ nut_conf_group }}"
     mode: "0750"
 
+# nut.target Wants=nut-server.service. On Arch (one package, client and server)
+# upsd then starts on a secondary, finds no ups.conf, exits fatal and hits its
+# start limit on every boot: failed on ms-a2, deskslim-1, deskslim-2 and tuf-b550
+# after the 2026-11-20 power losses. A secondary never serves a UPS, so mask it.
+- name: Mask nut-server on a secondary (upsd runs only on the primary)
+  ansible.builtin.systemd:
+    name: nut-server.service
+    masked: true
+    state: stopped
+  register: nut_server_masked
+  when:
+    - not ansible_check_mode
+    - ansible_os_family != 'Darwin'
+
+- name: Clear nut-server's failed state once masked
+  ansible.builtin.command: systemctl reset-failed nut-server.service
+  changed_when: false
+  failed_when: false
+  when:
+    - not ansible_check_mode
+    - ansible_os_family != 'Darwin'
+    - nut_server_masked is changed
+
 - name: Enable + start nut-monitor
   ansible.builtin.systemd:
     name: nut-monitor.service

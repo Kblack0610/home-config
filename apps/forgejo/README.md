@@ -72,7 +72,7 @@ Forgejo jobs run on the hosts' small-job slice, not in the cluster and not on a 
 
 If the governor is down, every seat holds github and Forgejo CI stops (fail closed, so it never shares a slot with a GitHub job). GitHub CI goes on. A home-config PR's own checks run on these seats, so a governor fix lands by break-glass: merge it as admin without waiting for checks, and Flux applies it from git.
 
-A seat registers once as `<host>-unity-pool-<n>-forgejo` against `http://forge-primary.kblab.me:3000` (`forgejo_runner_instance`), with the labels `docker` and `linux-amd64`, and asks for its slot's lease by its seat name (`/lease?seat=`) at `forgejo_runner_lease_url` (the governor's NodePort 30321 at pi5-master). Jobs reach the host's Docker through the mounted socket (`docker_host: automount`), so a workflow needs no `DOCKER_HOST`. The registration token is `vault_forgejo_runner_registration_token` in `ansible/group_vars/ci_hosts/vault.sops.yaml`.
+A seat registers once as `<host>-small-forgejo-<n>` (its dir `~linux-ci/small-forgejo-<n>`) against `http://forge-primary.kblab.me:3000` (`forgejo_runner_instance`), with the labels `docker` and `linux-amd64`, and asks for its slot's lease by its seat name (`/lease?seat=`) at `forgejo_runner_lease_url` (the governor's NodePort 30321 at pi5-master). Jobs reach the host's Docker through the mounted socket (`docker_host: automount`), so a workflow needs no `DOCKER_HOST`. The registration token is `vault_forgejo_runner_registration_token` in `ansible/group_vars/ci_hosts/vault.sops.yaml`.
 
 Add or move a seat: change the host's Unity slots or `ci_caps` in `ansible/inventory.yml`, re-render the topology (`scripts/render-ci-topology.py`), then:
 
@@ -80,9 +80,9 @@ Add or move a seat: change the host's Unity slots or `ci_caps` in `ansible/inven
 cd ansible && ansible-playbook playbooks/site.yml --limit <host> --tags forgejo-ci
 ```
 
-The play stops and removes the units of seats a host no longer has; their registrations stay listed in Site Administration, Actions, Runners until deleted there.
+The play stops and removes the units of seats a host no longer has, and the dirs of the old per-slot lend seats (`unity-pool-<n>-forgejo[-<m>]`, hc-839); their registrations stay listed in Site Administration, Actions, Runners until deleted there.
 
-Re-register a seat (a new instance, or its runner was deleted in the admin UI): remove `~linux-ci/unity-pool-<n>-forgejo/.runner` on the host and re-run the play. A new registration token, if needed:
+Re-register a seat (a new instance, or its runner was deleted in the admin UI): remove `~linux-ci/small-forgejo-<n>/.runner` on the host and re-run the play. A new registration token, if needed:
 
 ```bash
 ssh forge-hel1 docker compose -f /etc/forgejo/compose.yaml exec -u git forgejo \

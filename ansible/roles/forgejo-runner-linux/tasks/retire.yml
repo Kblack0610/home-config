@@ -3,7 +3,8 @@
 # seat it keeps (empty on a host with none). Before 2026-11-18 a host ran forgejo_slots
 # daemons of its own, forgejo-runner-<host>-forgejo-<n> in /var/lib/linux-ci/forgejo-<n>; a
 # seat's dir is named for its seat, so those dirs are never a seat's. A lend seat of the old
-# per-slot lending (removed in hc-825) is retired here too: it is not in forgejo_seat_names.
+# per-slot lending (removed in hc-825) is retired here too: its unit is not in forgejo_seat_names,
+# and its dir, unity-pool-<n>-forgejo[-<m>], is never a seat's (a seat's is small-forgejo-<n>).
 # Their Forgejo registrations stay listed until removed in Site Administration, Actions, Runners.
 - name: Find the Forgejo units and the old slot dirs
   ansible.builtin.find:
@@ -12,7 +13,7 @@
     file_type: "{{ item.type }}"
   loop:
     - {path: /etc/systemd/system, pattern: "forgejo-runner-*.service", type: file}
-    - {path: "{{ forgejo_runner_user_home }}", pattern: "forgejo-[0-9]*", type: directory}
+    - {path: "{{ forgejo_runner_user_home }}", pattern: ["forgejo-[0-9]*", "unity-pool-*-forgejo", "unity-pool-*-forgejo-[0-9]*"], type: directory}
   register: _forgejo_found
 
 - name: Pick the retired units
@@ -33,7 +34,11 @@
   ansible.builtin.file:
     path: "{{ item }}"
     state: absent
-  loop: "{{ _forgejo_retired_units + (_forgejo_found.results[1].files | map(attribute='path') | list) }}"
+  # A kept seat's dir never goes, whatever the topology names it.
+  loop: >-
+    {{ _forgejo_retired_units + (_forgejo_found.results[1].files | map(attribute='path')
+       | reject('in', forgejo_seat_names | map('regex_replace', '^' ~ inventory_hostname ~ '-', forgejo_runner_user_home ~ '/') | list)
+       | list) }}
   register: _forgejo_removed
 
 - name: Reload systemd after a retired unit

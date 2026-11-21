@@ -239,8 +239,8 @@
     - role: ci-host
       tags: [runner, ci]
   tasks:
-    # A personal repo cannot see org runners, so each ci_repo_runners entry
-    # registers against its one repo (inventory.yml says why), with the
+    # A personal repo cannot see org runners, so each ci_repo_runners seat (the
+    # topology's, one per MIN_JOB_CORES of the slot it borrows) registers against its one repo (inventory.yml says why), with the
     # workstation's gh as the repo owner. It runs as linux-ci like the Forgejo
     # seats: the role puts every runner user in the docker group, which is
     # root on the host, so a second user would isolate nothing. Its jobs use
@@ -256,23 +256,23 @@
         name: github-actions-runner-linux
         apply:
           tags: [runner, ci, linux-ci]
-      loop: "{{ ci_repo_runners | default([]) }}"
+      loop: "{{ ci_seats | selectattr('repo', 'defined') | list }}"
       loop_control:
-        loop_var: ci_repo
-        label: "{{ ci_repo.repo }} {{ ci_repo.slot }}"
+        loop_var: ci_seat
+        label: "{{ ci_seat.name }}"
       vars:
-        unity_slot: "{{ ci_repo.borrows }}"
+        unity_slot: "{{ ci_seat_slot }}"
         gh_runner_scope: repo
-        gh_runner_owner: "{{ ci_repo.repo.split('/')[0] }}"
-        gh_runner_repo: "{{ ci_repo.repo.split('/')[1] }}"
+        gh_runner_owner: "{{ ci_seat.repo.split('/')[0] }}"
+        gh_runner_repo: "{{ ci_seat.repo.split('/')[1] }}"
         gh_runner_token_source: gh
         gh_runner_install_packages: false
         gh_runner_user: linux-ci
         gh_runner_group: linux-ci
         gh_runner_user_home: "{{ linux_ci_user_home }}"
-        gh_runner_home: "{{ linux_ci_user_home }}/{{ ci_repo.slot }}"
-        gh_runner_name: "{{ inventory_hostname }}-{{ ci_repo.slot }}"
-        gh_runner_labels: "{{ ['self-hosted', 'linux', 'x64'] + ci_slot_caps[gh_runner_name] }}"
+        gh_runner_home: "{{ linux_ci_user_home }}/{{ ci_seat.name | regex_replace('^' ~ inventory_hostname ~ '-', '') }}"
+        gh_runner_name: "{{ ci_seat.name }}"
+        gh_runner_labels: "{{ ['self-hosted', 'linux', 'x64'] + ci_seat.caps }}"
         # The governor's seat labels (inventory ci_labels.seat_withheld).
         gh_runner_governed_labels: [light]
         gh_runner_withheld_labels: ["{{ ci_labels.seat_withheld }}"]
@@ -280,7 +280,7 @@
         gh_runner_register_withheld: true
         gh_runner_slice: "{{ unity_slot_slice }}"
         gh_runner_env:
-          HOME: "{{ linux_ci_user_home }}/{{ ci_repo.slot }}"
+          HOME: "{{ linux_ci_user_home }}/{{ ci_seat.name | regex_replace('^' ~ inventory_hostname ~ '-', '') }}"
           ACTIONS_RUNNER_HOOK_JOB_STARTED: "{{ linux_ci_job_started_hook }}"
           ACTIONS_RUNNER_HOOK_JOB_COMPLETED: "{{ linux_ci_job_completed_hook }}"
           CI_SLOT_CPUS: "{{ unity_slot_cpus }}"

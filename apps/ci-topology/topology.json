@@ -7,9 +7,6 @@
       {"name": "cachyos-x8664-main-unity-pool-2", "caps": ["unity"]}
     ]},
     "deskslim-1": {"site": "local", "full": true, "slots": [
-      {"name": "deskslim-1-dotfiles-private-1", "caps": ["light"], "repo": "Kblack0610/.dotfiles-private", "borrows": "deskslim-1-unity-pool-1"},
-      {"name": "deskslim-1-gungan-speak-1", "caps": ["light"], "repo": "Kblack0610/gungan-speak", "borrows": "deskslim-1-unity-pool-2"},
-      {"name": "deskslim-1-personal-sites-1", "caps": ["light"], "repo": "Kblack0610/personal-sites", "borrows": "deskslim-1-unity-pool-3"},
       {"name": "deskslim-1-unity-pool-1", "caps": ["unity"]},
       {"name": "deskslim-1-unity-pool-2", "caps": ["unity"]},
       {"name": "deskslim-1-unity-pool-3", "caps": ["unity"]},
@@ -42,12 +39,14 @@
       {"name": "deskslim-1-unity-pool-3-heavy-1", "caps": ["heavy"], "borrows": "deskslim-1-unity-pool-3", "cpus": 8, "memory_gb": 14},
       {"name": "deskslim-1-unity-pool-3-heavy-2", "caps": ["heavy"], "borrows": "deskslim-1-unity-pool-3", "cpus": 8, "memory_gb": 14},
       {"name": "deskslim-1-unity-pool-3-heavy-3", "caps": ["heavy"], "borrows": "deskslim-1-unity-pool-3", "cpus": 8, "memory_gb": 14},
-      {"name": "deskslim-1-unity-pool-3-heavy-4", "caps": ["heavy"], "borrows": "deskslim-1-unity-pool-3", "cpus": 8, "memory_gb": 14}
+      {"name": "deskslim-1-unity-pool-3-heavy-4", "caps": ["heavy"], "borrows": "deskslim-1-unity-pool-3", "cpus": 8, "memory_gb": 14},
+      {"name": "deskslim-1-dotfiles-private-1", "caps": ["light"], "repo": "Kblack0610/.dotfiles-private", "borrows": "deskslim-1-unity-pool-1", "cpus": 6, "memory_gb": 14},
+      {"name": "deskslim-1-dotfiles-private-2", "caps": ["light"], "repo": "Kblack0610/.dotfiles-private", "borrows": "deskslim-1-unity-pool-1", "cpus": 6, "memory_gb": 14},
+      {"name": "deskslim-1-dotfiles-private-3", "caps": ["light"], "repo": "Kblack0610/.dotfiles-private", "borrows": "deskslim-1-unity-pool-1", "cpus": 6, "memory_gb": 14},
+      {"name": "deskslim-1-gungan-speak-1", "caps": ["light"], "repo": "Kblack0610/gungan-speak", "borrows": "deskslim-1-unity-pool-2", "cpus": 6, "memory_gb": 14},
+      {"name": "deskslim-1-personal-sites-1", "caps": ["light"], "repo": "Kblack0610/personal-sites", "borrows": "deskslim-1-unity-pool-3", "cpus": 8, "memory_gb": 14}
     ]},
     "deskslim-2": {"site": "local", "full": true, "slots": [
-      {"name": "deskslim-2-dotfiles-private-1", "caps": ["light"], "repo": "Kblack0610/.dotfiles-private", "borrows": "deskslim-2-unity-pool-1"},
-      {"name": "deskslim-2-gungan-speak-1", "caps": ["light"], "repo": "Kblack0610/gungan-speak", "borrows": "deskslim-2-unity-pool-2"},
-      {"name": "deskslim-2-personal-sites-1", "caps": ["light"], "repo": "Kblack0610/personal-sites", "borrows": "deskslim-2-unity-pool-3"},
       {"name": "deskslim-2-unity-pool-1", "caps": ["unity"]},
       {"name": "deskslim-2-unity-pool-2", "caps": ["unity"]},
       {"name": "deskslim-2-unity-pool-3", "caps": ["unity"]},
@@ -80,7 +79,12 @@
       {"name": "deskslim-2-unity-pool-3-heavy-1", "caps": ["heavy"], "borrows": "deskslim-2-unity-pool-3", "cpus": 8, "memory_gb": 14},
       {"name": "deskslim-2-unity-pool-3-heavy-2", "caps": ["heavy"], "borrows": "deskslim-2-unity-pool-3", "cpus": 8, "memory_gb": 14},
       {"name": "deskslim-2-unity-pool-3-heavy-3", "caps": ["heavy"], "borrows": "deskslim-2-unity-pool-3", "cpus": 8, "memory_gb": 14},
-      {"name": "deskslim-2-unity-pool-3-heavy-4", "caps": ["heavy"], "borrows": "deskslim-2-unity-pool-3", "cpus": 8, "memory_gb": 14}
+      {"name": "deskslim-2-unity-pool-3-heavy-4", "caps": ["heavy"], "borrows": "deskslim-2-unity-pool-3", "cpus": 8, "memory_gb": 14},
+      {"name": "deskslim-2-dotfiles-private-1", "caps": ["light"], "repo": "Kblack0610/.dotfiles-private", "borrows": "deskslim-2-unity-pool-1", "cpus": 6, "memory_gb": 14},
+      {"name": "deskslim-2-dotfiles-private-2", "caps": ["light"], "repo": "Kblack0610/.dotfiles-private", "borrows": "deskslim-2-unity-pool-1", "cpus": 6, "memory_gb": 14},
+      {"name": "deskslim-2-dotfiles-private-3", "caps": ["light"], "repo": "Kblack0610/.dotfiles-private", "borrows": "deskslim-2-unity-pool-1", "cpus": 6, "memory_gb": 14},
+      {"name": "deskslim-2-gungan-speak-1", "caps": ["light"], "repo": "Kblack0610/gungan-speak", "borrows": "deskslim-2-unity-pool-2", "cpus": 6, "memory_gb": 14},
+      {"name": "deskslim-2-personal-sites-1", "caps": ["light"], "repo": "Kblack0610/personal-sites", "borrows": "deskslim-2-unity-pool-3", "cpus": 8, "memory_gb": 14}
     ]},
     "mac-mini": {"site": "local", "slots": [
       {"name": "mac-mini-mac", "caps": ["macos"], "repo": "BlackNBrownStudios/platform"},
@@ -112,9 +116,6 @@
       {"name": "ms-a2-unity-pool-2-heavy-3", "caps": ["heavy"], "borrows": "ms-a2-unity-pool-2", "cpus": 6, "memory_gb": 16}
     ]},
     "tuf-b550": {"site": "local", "full": true, "slots": [
-      {"name": "tuf-b550-dotfiles-private-1", "caps": ["light"], "repo": "Kblack0610/.dotfiles-private", "borrows": "tuf-b550-unity-pool-1"},
-      {"name": "tuf-b550-gungan-speak-1", "caps": ["light"], "repo": "Kblack0610/gungan-speak", "borrows": "tuf-b550-unity-pool-2"},
-      {"name": "tuf-b550-personal-sites-1", "caps": ["light"], "repo": "Kblack0610/personal-sites", "borrows": "tuf-b550-unity-pool-3"},
       {"name": "tuf-b550-unity-pool-1", "caps": ["unity"]},
       {"name": "tuf-b550-unity-pool-2", "caps": ["unity"]},
       {"name": "tuf-b550-unity-pool-3", "caps": ["unity"]},
@@ -160,7 +161,12 @@
       {"name": "tuf-b550-unity-pool-4-heavy-1", "caps": ["heavy"], "borrows": "tuf-b550-unity-pool-4", "cpus": 8, "memory_gb": 14},
       {"name": "tuf-b550-unity-pool-4-heavy-2", "caps": ["heavy"], "borrows": "tuf-b550-unity-pool-4", "cpus": 8, "memory_gb": 14},
       {"name": "tuf-b550-unity-pool-4-heavy-3", "caps": ["heavy"], "borrows": "tuf-b550-unity-pool-4", "cpus": 8, "memory_gb": 14},
-      {"name": "tuf-b550-unity-pool-4-heavy-4", "caps": ["heavy"], "borrows": "tuf-b550-unity-pool-4", "cpus": 8, "memory_gb": 14}
+      {"name": "tuf-b550-unity-pool-4-heavy-4", "caps": ["heavy"], "borrows": "tuf-b550-unity-pool-4", "cpus": 8, "memory_gb": 14},
+      {"name": "tuf-b550-dotfiles-private-1", "caps": ["light"], "repo": "Kblack0610/.dotfiles-private", "borrows": "tuf-b550-unity-pool-1", "cpus": 6, "memory_gb": 14},
+      {"name": "tuf-b550-dotfiles-private-2", "caps": ["light"], "repo": "Kblack0610/.dotfiles-private", "borrows": "tuf-b550-unity-pool-1", "cpus": 6, "memory_gb": 14},
+      {"name": "tuf-b550-dotfiles-private-3", "caps": ["light"], "repo": "Kblack0610/.dotfiles-private", "borrows": "tuf-b550-unity-pool-1", "cpus": 6, "memory_gb": 14},
+      {"name": "tuf-b550-gungan-speak-1", "caps": ["light"], "repo": "Kblack0610/gungan-speak", "borrows": "tuf-b550-unity-pool-2", "cpus": 6, "memory_gb": 14},
+      {"name": "tuf-b550-personal-sites-1", "caps": ["light"], "repo": "Kblack0610/personal-sites", "borrows": "tuf-b550-unity-pool-3", "cpus": 8, "memory_gb": 14}
     ]}
   }
 }

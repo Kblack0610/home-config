@@ -229,18 +229,54 @@ class CapTests(unittest.TestCase):
         self.assertTrue(repo)
         self.assertTrue(all(s.get("borrows") for s in repo))
 
+    def test_a_repo_runner_registers_one_sized_seat_per_min_job_cores_of_its_slot(self):
+        # One seat per slot and no slot size left the repo kind unweighed, so a lend ran one job (hc-repo-seats).
+        self.hosts["tuf-b550"]["ci_repo_runners"] = [{"repo": "Kblack0610/x", "name": "x", "borrows": 1}]
+        topo, fails = topology.render(self.hosts, self.groups)
+        self.assertEqual(fails, [])
+        cores = len(topology.cpu_set(self.hosts["tuf-b550"]["ci_unity_slot_cpus"][0]))
+        seats = [s for s in topo["hosts"]["tuf-b550"]["slots"] if s.get("repo") == "Kblack0610/x"]
+        self.assertEqual([s["name"] for s in seats],
+                         [f"tuf-b550-x-{i}" for i in range(1, cores // topology.MIN_JOB_CORES + 1)])
+        self.assertTrue(all(s["caps"] == ["light"] and s["borrows"] == "tuf-b550-unity-pool-1"
+                            and s["cpus"] == cores and s["memory_gb"] == 14 for s in seats))
+
     def test_a_repo_runner_on_a_grouped_or_missing_slot_fails(self):
         for host, n in (("deskslim-2", 4), ("ms-a2", 3)):
             with self.subTest(host=host, n=n):
                 self.setUp()
-                self.hosts[host]["ci_repo_runners"] = [{"repo": "Kblack0610/x", "slot": "x-1", "borrows": n}]
-                _, fails = self.slots()
-                self.assertTrue(any(f"{host}-x-1 borrows {host}-unity-pool-{n}, not one of" in f for f in fails), fails)
+                self.hosts[host]["ci_repo_runners"] = [{"repo": "Kblack0610/x", "name": "x", "borrows": n}]
+                slots, fails = self.slots()
+                self.assertTrue(any(f"{host}-x borrows {host}-unity-pool-{n}, not one of" in f for f in fails), fails)
+                self.assertFalse([s for s in slots if s.startswith(f"{host}-x-")])
 
     def test_a_repo_runner_without_borrows_fails(self):
-        self.hosts["deskslim-2"]["ci_repo_runners"] = [{"repo": "Kblack0610/x", "slot": "x-1"}]
+        self.hosts["deskslim-2"]["ci_repo_runners"] = [{"repo": "Kblack0610/x", "name": "x"}]
         _, fails = self.slots()
-        self.assertIn("deskslim-2: ci_repo_runners x-1 has no borrows (the Unity slot it runs on)", fails)
+        self.assertIn("deskslim-2: ci_repo_runners x has no borrows (the Unity slot it runs on)", fails)
+
+    def test_a_repo_runner_in_the_old_slot_form_fails_readably(self):
+        self.hosts["deskslim-2"]["ci_repo_runners"] = [{"repo": "Kblack0610/x", "slot": "x", "borrows": 1}]
+        slots, fails = self.slots()
+        self.assertTrue(any("ci_repo_runners" in f and "has no name" in f for f in fails), fails)
+        self.assertFalse([s for s in slots if "-x-" in s])
+
+    def test_seats_caps_a_repo_runner_below_its_slot_count(self):
+        # The repo weight is one figure for every personal repo, so a heavy repo caps its own seats.
+        self.hosts["tuf-b550"]["ci_repo_runners"] = [{"repo": "Kblack0610/x", "name": "x", "borrows": 1, "seats": 1},
+                                                     {"repo": "Kblack0610/y", "name": "y", "borrows": 2, "seats": 99}]
+        topo, fails = topology.render(self.hosts, self.groups)
+        self.assertEqual(fails, [])
+        names = [s["name"] for s in topo["hosts"]["tuf-b550"]["slots"] if s.get("repo")]
+        self.assertIn("tuf-b550-x-1", names)
+        self.assertNotIn("tuf-b550-x-2", names)
+        cores = len(topology.cpu_set(self.hosts["tuf-b550"]["ci_unity_slot_cpus"][1]))
+        self.assertEqual(len([n for n in names if n.startswith("tuf-b550-y-")]), cores // topology.MIN_JOB_CORES)
+
+    def test_seats_below_one_fails(self):
+        self.hosts["tuf-b550"]["ci_repo_runners"] = [{"repo": "Kblack0610/x", "name": "x", "borrows": 1, "seats": 0}]
+        _, fails = self.slots()
+        self.assertTrue(any("tuf-b550-x seats 0 is not a whole number of at least 1" in f for f in fails), fails)
 
     def test_a_host_without_forgejo_in_ci_caps_gets_no_seat(self):
         self.hosts["ms-a2"]["ci_caps"] = ["light", "heavy", "unity", "unity-build"]

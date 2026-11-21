@@ -30,7 +30,9 @@ Rendering also checks what the inventory must hold for the slots to fit their ho
 - A core host or a host in no_ci_hosts carries no CI.
 - A seat borrows one Unity test slot of its own LAN host, outside every slot group: the governor
   lends that slot to a Forgejo seat (one on each such slot of a host tagged forgejo) or to a
-  repo runner (ci_repo_runners "borrows") while no GitHub job holds it, so no seat has cores of its own.
+  repo runner seat (ci_repo_runners "borrows") while no GitHub job holds it, so no seat has cores of its own.
+  A ci_repo_runners entry {repo, name, borrows} registers the same count of seats (fewer if it sets seats) against its repo
+  (<host>-<name>-1 and on, caps light), each with the slot's size, so a lend packs its jobs too.
   Each such slot registers floor(its CPUs / MIN_JOB_CORES) Forgejo seats (<slot>-forgejo, then
   <slot>-forgejo-2 and on), each entry carrying the slot's "cpus" and "memory_gb"; the governor lends
   one slot to as many of them as their measured weights fit (apps/ci-runner-governor, pack()).
@@ -99,6 +101,8 @@ HOST_CAPS = ("light", "heavy", "unity", "unity-build", "unity-wide", "forgejo")
 # service and app ports (BlackNBrownStudios/platform#1592 on main, #1599 on develop), so two heavy
 # jobs on one host no longer clash. Revisit if a heavy job fails on an address already in use.
 SHARED_CAPS = ("light", "heavy")
+# The keys every ci_repo_runners entry carries; an optional "seats" caps its seat count.
+REPO_KEYS = ("repo", "name", "borrows")
 
 
 def gigabytes(val):
@@ -125,10 +129,8 @@ def render(hosts, groups):
         fails += [f"{host}: ci_caps names {c}, not one of {list(HOST_CAPS)}" for c in caps if c not in HOST_CAPS]
         if v.get("unity_ci_lan", True) is False and set(caps) & {*SHARED_CAPS, "forgejo"}:
             fails.append(f"{host}: a cloud host's ci_caps carry no light, heavy or forgejo, so a small job never powers a paid host")
-        slots += [{"name": f"{host}-{r['slot']}", "caps": ["light"], "repo": r["repo"],
-                   "borrows": unity_slot(host, r["borrows"])} for r in v.get("ci_repo_runners", []) if "borrows" in r]
-        fails += [f"{host}: ci_repo_runners {r['slot']} has no borrows (the Unity slot it runs on)"
-                  for r in v.get("ci_repo_runners", []) if "borrows" not in r]
+        fails += [f"{host}: ci_repo_runners {r.get('name', r)} has no {k}" + (" (the Unity slot it runs on)" if k == "borrows" else "")
+                  for r in v.get("ci_repo_runners", []) for k in REPO_KEYS if k not in r]
         unity = any(host in groups.get(g, ()) for g in UNITY_GROUPS)
         local = v.get("ci_local_seats")
         if local is not None and (type(local) is not int or local < 1 or not unity or v.get("unity_ci_lan", True) is False):
@@ -157,8 +159,8 @@ def render(hosts, groups):
                 if group.get(n):
                     slot["group"] = [unity_slot(host, t) for t in group[n]]
                 slots.append(slot)
-            slots += seats(host, v, caps, total, group, slots, fails)
-        elif any(s.get("borrows") for s in slots):
+            slots += seats(host, v, caps, total, group, fails)
+        elif any("borrows" in r for r in v.get("ci_repo_runners", [])):
             fails.append(f"{host}: a repo runner borrows a Unity slot, but the host has none")
         slots += [{"name": p["name"], "caps": [p["cap"]], **({"repo": p["repo"]} if p.get("repo") else {})}
                   for p in v.get("ci_pinned_runners", [])]
@@ -205,15 +207,20 @@ def label_failures(labels):
     return fails
 
 
-def seats(host, v, caps, total, group, slots, fails):
-    """A Forgejo seat on each lendable slot of a LAN host tagged forgejo, plus the failures of
-    the repo runners' "borrows". A lendable slot is a test slot in no slot group: a grouped one
-    already lends its cores to its build slot, and a slot has one lender at a time."""
+def seats(host, v, caps, total, group, fails):
+    """The seats of a LAN host's lendable slots: Forgejo seats where it is tagged forgejo, the
+    ci_seat_kinds seats, and its ci_repo_runners seats, plus the failures of the repo runners'
+    "borrows". A lendable slot is a test slot in no slot group: a grouped one already lends its
+    cores to its build slot, and a slot has one lender at a time."""
     grouped = set(group) | {t for ts in group.values() for t in ts}
     lendable = [unity_slot(host, n) for n in range(1, total + 1) if n not in grouped]
     lan = v.get("unity_ci_lan", True) is not False
-    fails += [f"{host}: {s['name']} borrows {s['borrows']}, not one of its lendable LAN slots {lendable}"
-              for s in slots if s.get("borrows") and not (lan and s["borrows"] in lendable)]
+    repos = [{**r, "borrows": unity_slot(host, r["borrows"])} for r in v.get("ci_repo_runners", [])
+             if all(k in r for k in REPO_KEYS)]
+    fails += [f"{host}: {host}-{r['name']} borrows {r['borrows']}, not one of its lendable LAN slots {lendable}"
+              for r in repos if not (lan and r["borrows"] in lendable)]
+    fails += [f"{host}: {host}-{r['name']} seats {r['seats']!r} is not a whole number of at least 1"
+              for r in repos if "seats" in r and not (type(r["seats"]) is int and r["seats"] >= 1)]
     kinds = list(v.get("ci_seat_kinds") or [])
     fails += [f"{host}: ci_seat_kinds names {k}, not one of {list(SHARED_CAPS)} in its ci_caps"
               for k in kinds if k not in SHARED_CAPS or k not in caps]
@@ -236,10 +243,18 @@ def seats(host, v, caps, total, group, slots, fails):
         The governor's weights decide how many of them run at once."""
         return max(1, int(size(n).get("cpus", 0) // MIN_JOB_CORES))
 
+    def repo_count(r):
+        """A repo's seats: its slot's count, lowered by "seats" for a repo heavier than the shared repo weight."""
+        return min(count(r["borrows"]), r["seats"]) if type(r.get("seats")) is int else count(r["borrows"])
+
     forgejo = [{"name": f"{n}-forgejo" + (f"-{i}" if i > 1 else ""), "caps": ["forgejo"], "forge": "forgejo",
                 "borrows": n, **size(n)} for n in lendable if "forgejo" in caps for i in range(1, count(n) + 1)]
-    return forgejo + [{"name": f"{n}-{k}-{i}", "caps": [k], "borrows": n, **size(n)}
-                      for k in kinds if k in SHARED_CAPS and k in caps for n in lendable for i in range(1, count(n) + 1)]
+    kind = [{"name": f"{n}-{k}-{i}", "caps": [k], "borrows": n, **size(n)}
+            for k in kinds if k in SHARED_CAPS and k in caps for n in lendable for i in range(1, count(n) + 1)]
+    # A personal repo cannot see org runners, so its seats register against the repo and carry light.
+    repo = [{"name": f"{host}-{r['name']}-{i}", "caps": ["light"], "repo": r["repo"], "borrows": r["borrows"],
+             **size(r["borrows"])} for r in repos if r["borrows"] in lendable for i in range(1, repo_count(r) + 1)]
+    return forgejo + kind + repo
 
 
 def unity_layout(v):

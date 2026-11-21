@@ -80,6 +80,7 @@ make the change, then remove it again.
 `external-dns.alpha.kubernetes.io/controller: none` on its Ingress so external-dns skips it
 (add a `local-network-only` Traefik middleware too). The pattern is `apps/frigate/ingress.yaml`
 (camera footage); `apps/agents/ingress.yaml` is the opposite, public on purpose.
+The middleware alone does not keep a host off the internet: Traefik sees every connection, tunnel or LAN, from a pod IP, so its allowlist passes both. Only the missing DNS record does: Cloudflare answers a host with no record with 530 (error 1016), even when the Host header is sent to a hostname that has one. external-dns is upsert-only, so a host that was already public keeps its CNAME until someone deletes it in Cloudflare. `scripts/lan-only-exposure.sh` lists every host that uses the middleware and whether it answers through the tunnel and on the LAN.
 
 ## Troubleshooting (not part of adding a site)
 

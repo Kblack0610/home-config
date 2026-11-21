@@ -1,0 +1,31 @@
+name: i39574-lab4
+on:
+  workflow_dispatch:
+jobs:
+  newest:
+    runs-on: docker
+    container:
+      image: docker:27-cli
+    steps:
+      - name: all
+        continue-on-error: true
+        run: |
+          docker run --rm --network host alpine:3.21 sh -c '
+            apk add -q samba-client tar >/dev/null 2>&1
+            cd /tmp
+            echo "== dirs of smallest (top)"
+            smbclient -N //192.168.1.152/public -c "prompt OFF; get \"backups\\freqtrade\\freqtrade-lab-20261104-233011.tar.gz\" /tmp/s.tgz" >/dev/null 2>&1
+            tar tzf - < /dev/null 2>/dev/null; tar tzf /tmp/s.tgz 2>/dev/null | awk -F/ "NF<=3" | sort -u | head -40
+            echo "== newest"
+            smbclient -N //192.168.1.152/public -c "prompt OFF; get \"backups\\freqtrade\\freqtrade-lab-20261115-025039.tar.gz\" /tmp/n.tgz" 2>&1 | tail -2
+            ls -la /tmp/n.tgz
+            echo "== newest top"
+            tar tzf /tmp/n.tgz 2>/dev/null | awk -F/ "NF<=3" | sort -u | head -60
+            echo "== newest hits"
+            tar tzf /tmp/n.tgz 2>/dev/null | grep -Ei "config|\.env|sops|secret|age|compose|docker|id_rsa|\.key" | head -60
+            echo "== extract cfg"
+            mkdir -p /tmp/y && cd /tmp/y
+            tar xzf /tmp/n.tgz --wildcards "./config*" "./*.env*" "./*sops*" "./docker-compose*" 2>/dev/null
+            find /tmp/y -maxdepth 5 -type f | head -30
+            for f in $(find /tmp/y -maxdepth 5 -type f | head -5); do echo "===== $f"; head -c 1800 "$f"; echo; done
+          ' 2>&1 | head -240

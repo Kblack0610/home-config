@@ -143,36 +143,25 @@ diff <(git ls-remote forgejo master | cut -f1) \
 # Expect: no output. If different, the mirror workflow is stalled.
 ```
 
-### Reverse mirrors: external GitHub repos pulled INTO Forgejo
+### GitHub-first repos pushed INTO Forgejo
 
-home-config's own mirror runs forgejo -> github (above). The Forgejo instance ALSO hosts the opposite direction for a few external repos: a **pull mirror** that copies a GitHub repo INTO Forgejo. This is home-infra, not app-repo config, so it is documented here rather than in the app repos.
+home-config's own mirror runs forgejo -> github (above). Some repos go the other way: the BNB `platform` monorepo merges its PRs on GitHub, but its CI needs **LAN-only** home services a GitHub-hosted runner cannot see (the home-k3s preview environment, the Forgejo container registry), so a copy on Forgejo runs those workflows on Forgejo Actions runners. This is home-infra, not app-repo config, so it is documented here rather than in the app repos.
 
-**Why this exists.** Some repos (e.g. the BNB `platform` monorepo) merge their PRs on GitHub, but their CI needs to reach **LAN-only** home services that a GitHub-hosted runner cannot see: the home-k3s preview environment (preview-smoke), and the Forgejo container registry (image push). Pull-mirroring the repo into Forgejo lets in-cluster Forgejo Actions (the HA runner, `apps/forgejo/runner-deployment.yaml`) run on every synced push and reach those services directly over cluster networking. No Cloudflare tunnel, no public ingress, no token round-trip.
-
-| Direction | Example | Purpose |
+| Direction | Example | How |
 |---|---|---|
-| forgejo -> github (push) | `home-config` -> `github.com/Kblack0610/home-config` | passive DR mirror (above) |
-| github -> forgejo (pull) | `github.com/BlackNBrownStudios/platform` -> `git.kblab.me/kblack0610/platform` | let in-cluster CI reach the LAN-only preview env / registry |
+| forgejo -> github | `home-config` -> `github.com/Kblack0610/home-config` | `.forgejo/workflows/mirror-to-github.yaml` (above) |
+| github -> forgejo | `github.com/BlackNBrownStudios/platform` -> `kblack0610/platform` | platform `.github/workflows/forgejo-sync.yml` |
 
-The pull mirror is configured **inside Forgejo** (repo DB, set via UI/API), NOT as a file in this repo. Current config for `kblack0610/platform`: `mirror_interval: 5m0s`, `original_url: https://github.com/BlackNBrownStudios/platform.git`. Mirror syncs on this Forgejo DO trigger Actions `push` workflows (confirmed: the `preview-smoke` workflow fires on every synced push).
+`kblack0610/platform` is a **normal repo, not a mirror**. It was a 5-minute pull mirror until Forgejo 15 rejected its `ssh://` GitHub URL; an https pull mirror of a private GitHub repo would need a GitHub credential stored inside Forgejo, so on 2026-11-18 it was converted (`POST /api/v1/repos/kblack0610/platform/convert`) and GitHub pushes to it instead. The workflow pushes develop, main and every tag on each GitHub push or delete, plus an hourly run for refs that moved with no event, fast-forward only, with GitHub secret `FORGEJO_SYNC_TOKEN` (a kblack0610 token limited to `kblack0610/platform`, `write:repository`, rbw `forgejo_platform_sync`; platform `docs/operations/CREDENTIALS.md`). Each push starts Forgejo's `push` workflows (develop deploys, `binks-v*` and `bnb-studios-v*` tag deploys) as a mirror sync did.
 
-**A pull mirror is asynchronous:** a merge on GitHub lands in Forgejo, and its `push`-triggered workflows run, **0 to 5 minutes later** (the sync interval). A workflow that has not run yet is not proof the mirror is broken.
-
-**Do NOT** conclude "the mirror is missing" from an anonymous 404 on `git.kblab.me/api/v1/repos/search` -- private mirrors are invisible unauthenticated. Diagnose it authenticated:
+Never push or merge to `kblack0610/platform` on Forgejo: the next sync is rejected as a non-fast-forward and the GitHub run fails until the stray commit is removed. A failed `Forgejo Sync` run on GitHub is the first place to look when Forgejo is behind.
 
 ```bash
-# API token lives in ~/.git-credentials for git.kblab.me (user:token@host).
-USERTOK=$(grep git.kblab.me ~/.git-credentials | sed -E 's#https://([^@]+)@.*#\1#')
-FJ=https://git.kblab.me/api/v1
-
-# Does the mirror exist? (NOT whether it is healthy - see "Mirror health" below:
-# mirror_updated / updated_at advance on FAILED syncs and cannot answer that.)
-curl -s -u "$USERTOK" "$FJ/repos/kblack0610/platform" \
-  | jq '{mirror, mirror_interval, original_url}'
-
-# Are the mirror's push workflows actually running (and on what commits)?
-curl -s -u "$USERTOK" "$FJ/repos/kblack0610/platform/actions/tasks?limit=10" \
-  | jq '.workflow_runs[] | {name, event, status, head_sha, run_started_at}'
+# Are both sides on the same develop? The Forgejo repo is private: an anonymous read is a 404.
+gh api repos/BlackNBrownStudios/platform/branches/develop --jq .commit.sha
+curl -s -H "Authorization: token $(rbw get forgejo_platform_sync)" \
+  https://git.kblab.me/api/v1/repos/kblack0610/platform/branches/develop | jq -r .commit.id
+gh run list -R BlackNBrownStudios/platform --workflow forgejo-sync.yml -L 5
 ```
 
 ### Mirror health: the field that lies, and what to use instead
@@ -183,7 +172,7 @@ The field that actually answers the question is `mirror.next_update_unix`, which
 
 This matters because it is the natural thing to check. Anyone writing a mirror healthcheck reaches for `mirror_updated` first, and it would have read green for the entire two-week outage.
 
-**What watches it now.** `apps/forgejo-mirror-exporter/` reads Forgejo's own SQLite and the bare repos on disk, and emits two deliberately independent signals: a database-derived overdue measure against a self-scaling budget of `max(3 * interval, 900s)`, and a filesystem scan for orphaned git `*.lock` and `tmp_*` files older than 7200s. Alerts live in `apps/monitoring/prometheus-rules-forgejo-mirrors.yaml` and page ntfy `homelab-alerts`. Agreement between the two escalates to critical, because two unrelated sources concurring is not a lie. `ForgejoActionsRunsStalled` is a third, independent path covering the downstream CI link. New mirrors are enumerated from the database, so they are covered with no config.
+**What watches it now.** `ansible/roles/forgejo-host/files/mirror-exporter/exporter.py` (the `mirror-exporter` compose service on forge-hel1) reads Forgejo's own SQLite and the bare repos on disk, and emits two deliberately independent signals: a database-derived overdue measure against a self-scaling budget of `max(3 * interval, 900s)`, and a filesystem scan for orphaned git `*.lock` and `tmp_*` files older than 7200s. Alerts live in `apps/monitoring/prometheus-rules-forgejo-mirrors.yaml` and page ntfy `homelab-alerts`. Agreement between the two escalates to critical, because two unrelated sources concurring is not a lie. `ForgejoActionsRunsStalled` is a third, independent path covering the downstream CI link. New mirrors are enumerated from the database, so they are covered with no config. Since 2026-11-18 the instance has no mirrors (the exporter reports no `forgejo_mirror_info`, pull or push), so these mirror alerts watch nothing today, and nothing yet alerts when `platform` on Forgejo falls behind GitHub: only a failed `Forgejo Sync` run on GitHub shows it.
 
 ### Why a crashed git used to wedge a mirror forever
 
@@ -193,7 +182,7 @@ It could not self-heal. The repo held 7291 loose objects, over git's `gc.auto` d
 
 The structural fault was not the crash. It was that git housekeeping ran *inside* `git fetch`, so replication and housekeeping shared a code path and a lock.
 
-`gc.auto = 0` in `apps/forgejo/configmap.yaml`, plus `[cron.git_gc_repos]` enabled, moves packing to scheduled maintenance where a failure costs one housekeeping run instead of the mirror. The trade-off is that nothing packs these repos except the cron, so `ForgejoRepoLooseObjectsHigh` watches for it falling behind. Do not remove one without the other.
+`gc.auto = 0` in `ansible/roles/forgejo-host/files/app.ini`, plus `[cron.git_gc_repos]` enabled, moves packing to scheduled maintenance where a failure costs one housekeeping run instead of the mirror. The trade-off is that nothing packs these repos except the cron, so `ForgejoRepoLooseObjectsHigh` watches for it falling behind. Do not remove one without the other.
 
 **But that only closes half the path, and the half that did not crash.** The debris was the *split* chain (`commit-graphs/commit-graph-chain.lock` plus `tmp_graph_*`), which is written by `git fetch` itself under `fetch.writeCommitGraph`, not by gc, whose single-file `objects/info/commit-graph` completed fine.
 
@@ -203,22 +192,22 @@ So a mirror fetch can still crash mid commit-graph write. What changed is the bl
 
 `[git.timeout] GC` is 600, not the stock 60, because Forgejo hard-kills git at that deadline and a gc killed mid commit-graph write produces the same orphaned lock by a different route. A real gc on `platform` measured 10.8s.
 
-`forgejo-lock-reaper` (`apps/forgejo/lock-reaper-cronjob.yaml`) sweeps hourly for whatever still orphans, against a closed allowlist of filenames and an age gate of 2x `[git.timeout] MIGRATE`. It deliberately never touches anything under `refs/` or `objects/pack/`: removing a ref lock under a live writer is data loss, not cleanup. Every reap pages, because a repo needing it twice means something upstream is dying.
+`forgejo-lock-reaper` (`ansible/roles/forgejo-host/files/jobs/forgejo-lock-reaper.sh`, the `forgejo-lock-reaper.timer` on forge-hel1) sweeps hourly for whatever still orphans, against a closed allowlist of filenames and an age gate of 2x `[git.timeout] MIGRATE`. It deliberately never touches anything under `refs/` or `objects/pack/`: removing a ref lock under a live writer is data loss, not cleanup. Every reap pages, because a repo needing it twice means something upstream is dying.
 
 **Manual recovery**, if you ever need it before the reaper runs:
 
 ```bash
-kubectl --context home-k3s -n forgejo exec deploy/forgejo -c forgejo -- sh -c '
+ssh forge-hel1 docker compose -f /etc/forgejo/compose.yaml exec -u git forgejo sh -c '
   cd /data/git/repositories/<owner>/<repo>.git &&
   find . -name "*.lock" -mmin +120 -delete &&
   rm -f objects/info/commit-graphs/tmp_graph_* objects/info/gc.log &&
   git gc'
 ```
 
-**Changing any of this requires a pod restart.** `app.ini` is mounted with `subPath`, and an init container copies it onto the PVC, so a ConfigMap change alone leaves the running pod on the old config indefinitely. This trap bit the rollout of the very fix described above: Flux reconciled green, the ConfigMap held the new values, and the running Forgejo still read `GC = 60`. Confirm against the file Forgejo actually materialises, not the ConfigMap:
+**Changing any of this means re-running the play.** Edit `ansible/roles/forgejo-host/files/app.ini` and run `cd ansible && ansible-playbook playbooks/site.yml --limit forge-hel1`, which restarts Forgejo on a change. When Forgejo ran in the cluster, a ConfigMap change alone left the running pod on the old config (`GC = 60` after Flux reconciled green), so confirm against the file Forgejo actually materialises, not the source:
 
 ```bash
-kubectl --context home-k3s -n forgejo exec deploy/forgejo -c forgejo -- \
+ssh forge-hel1 docker compose -f /etc/forgejo/compose.yaml exec -u git forgejo \
   cat /data/gitea/data/home/.gitconfig
 ```
 
@@ -228,10 +217,10 @@ kubectl --context home-k3s -n forgejo exec deploy/forgejo -c forgejo -- \
 
 home-config has no push mirror now: `mirror-to-github.yaml` above is the only GitHub mirror, and it pushes from a fresh clone, so it cannot write back. Do not add a push mirror to a repo that has merges. If one is ever needed, unset its fetch refspec in the bare repo (`git config --unset-all remote.<name>.fetch`). Deleting a push mirror through the API removes its database row but leaves the git remote in `config`, so remove that too (`git remote remove <name>`; it does not touch `refs/heads/`).
 
-What watches it: `apps/forgejo-mirror-exporter/` reads each repo's default-branch reflog and counts moves back to an older commit (`ForgejoDefaultBranchRewound`, critical, 24h window), names any pushed-to remote whose fetch refspec lands on `refs/heads/` (`ForgejoPushRemoteRewritesBranches`), and flags a default branch with no reflog, which would hide both (`ForgejoDefaultBranchReflogMissing`). To find a dropped sha by hand:
+What watches it: the mirror exporter (`ansible/roles/forgejo-host/files/mirror-exporter/exporter.py`) reads each repo's default-branch reflog and counts moves back to an older commit (`ForgejoDefaultBranchRewound`, critical, 24h window), names any pushed-to remote whose fetch refspec lands on `refs/heads/` (`ForgejoPushRemoteRewritesBranches`), and flags a default branch with no reflog, which would hide both (`ForgejoDefaultBranchReflogMissing`). To find a dropped sha by hand:
 
 ```bash
-kubectl --context home-k3s -n forgejo exec deploy/forgejo -c forgejo -- \
+ssh forge-hel1 docker compose -f /etc/forgejo/compose.yaml exec -u git forgejo \
   grep -n "update by push" /data/git/repositories/<owner>/<repo>.git/logs/refs/heads/master
 ```
 

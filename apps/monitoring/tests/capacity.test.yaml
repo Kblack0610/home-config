@@ -37,14 +37,20 @@ tests:
         alertname: CiHostHeldOutByDisk
         exp_alerts: []
 
-  - name: a Spot host reclaimed 4 times in a day warns, 3 times stays quiet
+  - name: a Spot host reclaimed 4 times in a day warns, 3 times stays quiet, an on-demand host never does
     interval: 1h
     input_series:
+      - series: 'ci_governor_rate_usd_per_hour{host="aws-spot-1",basis="spot-estimate"}'
+        values: '0.28x6'
+      - series: 'ci_governor_rate_usd_per_hour{host="aws-spot-2",basis="spot-estimate"}'
+        values: '0.66x6'
+      - series: 'ci_governor_rate_usd_per_hour{host="aws-build-1",basis="on-demand"}'
+        values: '1.855x6'
       - series: 'ci_governor_fallback_total{host="aws-spot-1",reason="reclaim"}'
         values: '0 1 2 3 4 4 4'
       - series: 'ci_governor_fallback_total{host="aws-spot-2",reason="reclaim"}'
         values: '0 1 2 3 3 3 3'
-      - series: 'ci_governor_fallback_total{host="aws-burst-1",reason="reclaim"}'
+      - series: 'ci_governor_fallback_total{host="aws-build-1",reason="reclaim"}'
         values: '0 2 4 6 8 8 8'
     alert_rule_test:
       - eval_time: 3h
@@ -55,6 +61,34 @@ tests:
         exp_alerts:
           - exp_labels: {alertname: CiSpotHostReclaimedOften, severity: warning, category: capacity, fleet: fix, host: aws-spot-1, reason: reclaim}
             exp_annotations: {summary: "aws-spot-1 was reclaimed by AWS more than 3 times in 24 h, each killing its jobs: set it on-demand in platform infra/aws-ci-burst variables.tf"}
+
+  - name: a host held starting or stopping for 15 minutes pages; a normal start, and a governor restart mid-start, do not reset or fire wrongly
+    interval: 1m
+    input_series:
+      # Normal start: pending for 2 minutes, then running.
+      - series: 'ci_governor_power_state{host="aws-spot-1",state="starting",reason="queue",pod="a"}'
+        values: '1x2'
+      - series: 'ci_governor_power_state{host="aws-spot-1",state="running",reason="queue",pod="a"}'
+        values: '_x2 1x30'
+      # Hung start across a governor restart at minute 8 (new pod label).
+      - series: 'ci_governor_power_state{host="aws-spot-2",state="starting",reason="queue",pod="a"}'
+        values: '1x8'
+      - series: 'ci_governor_power_state{host="aws-spot-2",state="starting",reason="queue",pod="b"}'
+        values: '_x8 1x30'
+      # Hung stop.
+      - series: 'ci_governor_power_state{host="aws-build-1",state="stopping",reason="idle",pod="a"}'
+        values: '1x30'
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: CiHostPowerStuck
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: CiHostPowerStuck
+        exp_alerts:
+          - exp_labels: {alertname: CiHostPowerStuck, severity: critical, category: capacity, fleet: fix, host: aws-spot-2, state: starting}
+            exp_annotations: {summary: "aws-spot-2 has been starting for 15 minutes: docs/runbooks/unity-ci-host.md#a-host-stuck-starting-or-stopping"}
+          - exp_labels: {alertname: CiHostPowerStuck, severity: critical, category: capacity, fleet: fix, host: aws-build-1, state: stopping}
+            exp_annotations: {summary: "aws-build-1 has been stopping for 15 minutes: docs/runbooks/unity-ci-host.md#a-host-stuck-starting-or-stopping"}
 
   - name: a blind governor pages after 30 minutes, and a short gap stays quiet
     interval: 1m
@@ -74,21 +108,14 @@ tests:
           - exp_labels: {alertname: CiGovernorBlind, severity: critical, category: capacity, fleet: fix}
             exp_annotations: {summary: "ci-runner-governor has had no reading for 30 minutes, so no Unity slot is being pulled or returned. Check github_runner_exporter_api_ok and GitHub's API limit"}
 
-  - name: a host short of its runners for an hour wakes an agent; opt-in and powered hosts stay quiet
+  - name: a host short of its runners for an hour wakes an agent; stopped and unread hosts stay quiet
     interval: 1m
     input_series:
-      - series: 'github_runner_pool_expected{host="windows-media-ci",pool="unity"}'
+      - series: 'github_runner_pool_expected{host="tuf-b550",pool="unity"}'
         values: '3x90'
-      - series: 'github_runner_pool_online{host="windows-media-ci",pool="unity"}'
+      - series: 'github_runner_pool_online{host="tuf-b550",pool="unity"}'
         values: '2x90'
-      # Opt-in: offline unless asked for.
-      - series: 'github_runner_pool_expected{host="windows-media",pool="windows"}'
-        values: '1x90'
-      - series: 'github_runner_pool_online{host="windows-media",pool="windows"}'
-        values: '0x90'
-      - series: 'ci_governor_rate_usd_per_hour{host="windows-media-ci",basis="owned"}'
-        values: '0x90'
-      - series: 'ci_governor_rate_usd_per_hour{host="windows-media",basis="owned"}'
+      - series: 'ci_governor_rate_usd_per_hour{host="tuf-b550",basis="owned"}'
         values: '0x90'
       # Powered off by the governor: quiet.
       - series: 'github_runner_pool_expected{host="aws-burst-2",pool="unity"}'
@@ -131,8 +158,8 @@ tests:
         exp_alerts:
           - exp_labels: {alertname: CiHostRunnersOffline, severity: warning, category: capacity, fleet: fix, host: aws-burst-3, pool: unity}
             exp_annotations: {summary: "aws-burst-3 has had 1 unity runner(s) offline for an hour: docs/runbooks/unity-ci-host.md#a-host-short-of-its-runners"}
-          - exp_labels: {alertname: CiHostRunnersOffline, severity: warning, category: capacity, fleet: fix, host: windows-media-ci, pool: unity}
-            exp_annotations: {summary: "windows-media-ci has had 1 unity runner(s) offline for an hour: docs/runbooks/unity-ci-host.md#a-host-short-of-its-runners"}
+          - exp_labels: {alertname: CiHostRunnersOffline, severity: warning, category: capacity, fleet: fix, host: tuf-b550, pool: unity}
+            exp_annotations: {summary: "tuf-b550 has had 1 unity runner(s) offline for an hour: docs/runbooks/unity-ci-host.md#a-host-short-of-its-runners"}
 
   - name: a runner gap shorter than an hour stays quiet
     interval: 1m
@@ -147,6 +174,60 @@ tests:
       - eval_time: 55m
         alertname: CiHostRunnersOffline
         exp_alerts: []
+
+  - name: a job no runner serves warns after 30 minutes, a served or jobless wait stays quiet
+    interval: 1m
+    input_series:
+      - series: 'github_actions_job_waiting{repo=".dotfiles-private",workflow="ci",job_name="shell tests",labels="self-hosted,linux",pool="unserved",stuck="false"}'
+        values: '0+60x40'
+      - series: 'github_actions_job_waiting{repo="unity-core",workflow="ci",job_name="test",labels="unity",pool="unity",stuck="false"}'
+        values: '0+60x40'
+      - series: 'github_actions_job_waiting{repo="x",workflow="ci",job_name="",labels="",pool="jobless",stuck="true"}'
+        values: '0+60x40'
+    alert_rule_test:
+      - eval_time: 29m
+        alertname: CiJobUnserved
+        exp_alerts: []
+      - eval_time: 35m
+        alertname: CiJobUnserved
+        exp_alerts:
+          - exp_labels: {alertname: CiJobUnserved, severity: warning, category: capacity, fleet: fix, repo: .dotfiles-private, workflow: ci, job_name: shell tests, labels: "self-hosted,linux"}
+            exp_annotations: {summary: ".dotfiles-private shell tests has waited 35m 0s for labels self-hosted,linux that no runner it may use carries: docs/runbooks/unity-ci-host.md#a-job-no-runner-serves"}
+
+  - name: a small job on a whole slot of a host with seats warns after 10 minutes, and nowhere else
+    interval: 1m
+    input_series:
+      # ms-a2 has seats: its slot 1 runs short light jobs, 3 minutes on and 2 off, each end a scrape staleness marker (fires);
+      # its seat runs one (quiet).
+      - series: 'ci_runner_job{runner="ms-a2-unity-pool-1",kind="light"}'
+        values: '1 1 1 stale _ 1 1 1 stale _ 1 1 1 stale _ 1 1 1 stale _ 1'
+      - series: 'ci_runner_job{runner="ms-a2-unity-pool-1-light-1",kind="light"}'
+        values: '1x20'
+      - series: 'ci_runner_job{runner="ms-a2-unity-pool-2",kind="unity"}'
+        values: '1x20'
+      - series: 'github_runner_state{host="ms-a2",name="ms-a2-unity-pool-1-light-1",state="running"}'
+        values: '1x20'
+      - series: 'github_runner_state{host="ms-a2",name="ms-a2-unity-pool-1-heavy-1",state="idle"}'
+        values: '0x20'
+      # box has no seats, so a light job on its slot is its one path (quiet).
+      - series: 'ci_runner_job{runner="box-unity-pool-1",kind="light"}'
+        values: '1x20'
+      - series: 'github_runner_state{host="box",name="box-unity-pool-1",state="running"}'
+        values: '1x20'
+      # new's seat is in the topology but not registered yet, so its slot is still the path (quiet).
+      - series: 'ci_runner_job{runner="new-unity-pool-1",kind="light"}'
+        values: '1x20'
+      - series: 'github_runner_state{host="new",name="new-unity-pool-1-light-1",state="missing"}'
+        values: '0x20'
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: CiSmallJobOnWholeSlot
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: CiSmallJobOnWholeSlot
+        exp_alerts:
+          - exp_labels: {alertname: CiSmallJobOnWholeSlot, severity: warning, category: capacity, fleet: fix, host: ms-a2, runner: ms-a2-unity-pool-1, kind: light}
+            exp_annotations: {summary: "ms-a2-unity-pool-1 has kept taking light jobs on a whole Unity slot for 10 minutes, though ms-a2 has seats for small jobs: docs/runbooks/unity-ci-host.md#a-small-job-on-a-whole-slot"}
 
   - name: a low GitHub API bucket warns after 10 minutes, per scope, across a pod restart
     interval: 1m
@@ -193,11 +274,17 @@ tests:
         values: '9x60'
       - series: 'node_filesystem_size_bytes{instance="c",device="d3",job="node-exporter",fstype="ext4",mountpoint="/"}'
         values: '100x60'
-      # Excluded on purpose: a full simulator volume, a full tmpfs, a full share.
+      # Excluded on purpose, each always full: a CoreSimulator volume,
       - series: 'node_filesystem_avail_bytes{instance="m",device="s",job="mac-nodes",fstype="apfs",mountpoint="/Library/Developer/CoreSimulator/Volumes/iOS"}'
         values: '1x60'
       - series: 'node_filesystem_size_bytes{instance="m",device="s",job="mac-nodes",fstype="apfs",mountpoint="/Library/Developer/CoreSimulator/Volumes/iOS"}'
         values: '100x60'
+      # a simulator runtime cryptexd mounts read-only (newer Xcode),
+      - series: 'node_filesystem_avail_bytes{instance="m",device="x",job="mac-nodes",fstype="apfs",mountpoint="/private/var/run/com.apple.security.cryptexd/mnt/com.apple.iPhoneOS.SimulatorRuntime-v24.2.8117.0.mmGnur"}'
+        values: '1x60'
+      - series: 'node_filesystem_size_bytes{instance="m",device="x",job="mac-nodes",fstype="apfs",mountpoint="/private/var/run/com.apple.security.cryptexd/mnt/com.apple.iPhoneOS.SimulatorRuntime-v24.2.8117.0.mmGnur"}'
+        values: '100x60'
+      # a tmpfs and a share.
       - series: 'node_filesystem_avail_bytes{instance="m",device="t",job="node-exporter",fstype="tmpfs",mountpoint="/dev/shm"}'
         values: '1x60'
       - series: 'node_filesystem_size_bytes{instance="m",device="t",job="node-exporter",fstype="tmpfs",mountpoint="/dev/shm"}'
@@ -224,6 +311,35 @@ tests:
       - eval_time: 10m
         alertname: NodeDiskCritical
         exp_alerts: []
+
+  - name: a read-only mount is never low disk
+    interval: 1m
+    input_series:
+      - series: 'node_filesystem_avail_bytes{instance="m",device="disk18s1",job="mac-nodes",fstype="hfs",mountpoint="/private/var/folders/x/T/tmp.a/m"}'
+        values: '14x60'
+      - series: 'node_filesystem_size_bytes{instance="m",device="disk18s1",job="mac-nodes",fstype="hfs",mountpoint="/private/var/folders/x/T/tmp.a/m"}'
+        values: '100x60'
+      - series: 'node_filesystem_readonly{instance="m",device="disk18s1",job="mac-nodes",fstype="hfs",mountpoint="/private/var/folders/x/T/tmp.a/m"}'
+        values: '1x60'
+      - series: 'node_filesystem_avail_bytes{instance="m",device="disk3s5",job="mac-nodes",fstype="apfs",mountpoint="/System/Volumes/Data"}'
+        values: '14x60'
+      - series: 'node_filesystem_size_bytes{instance="m",device="disk3s5",job="mac-nodes",fstype="apfs",mountpoint="/System/Volumes/Data"}'
+        values: '100x60'
+      - series: 'node_filesystem_readonly{instance="m",device="disk3s5",job="mac-nodes",fstype="apfs",mountpoint="/System/Volumes/Data"}'
+        values: '0x60'
+      - series: 'node_filesystem_files_free{instance="m",device="disk18s1",job="mac-nodes",fstype="hfs",mountpoint="/private/var/folders/x/T/tmp.a/m"}'
+        values: '0x60'
+      - series: 'node_filesystem_files{instance="m",device="disk18s1",job="mac-nodes",fstype="hfs",mountpoint="/private/var/folders/x/T/tmp.a/m"}'
+        values: '100x60'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: NodeInodesCritical
+        exp_alerts: []
+      - eval_time: 40m
+        alertname: NodeDiskLow
+        exp_alerts:
+          - exp_labels: {alertname: NodeDiskLow, severity: warning, category: capacity, fleet: fix, instance: m, device: disk3s5, job: mac-nodes}
+            exp_annotations: {summary: "m disk3s5 has 14% free"}
 
   - name: btrfs subvolumes on one device count once
     interval: 1m

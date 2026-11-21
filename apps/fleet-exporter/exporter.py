@@ -14,7 +14,8 @@ WHY THIS EXISTS (gatus's own /metrics is not enough):
    all this: the glyph read green while four of five machines had never reported
    once, because the denominator came from the same set as the numerator. No
    gatus version can fix that, because "who SHOULD be reporting" is not a
-   question gatus is asking. $FLEET_ROSTER is.
+   question gatus is asking. The roster is: roster.json, rendered from the
+   fleet_pulse group in ansible/inventory.yml by scripts/render-fleet-pulse.py.
 
 3. Gatus's metrics are counters (gatus_results_total), so even for polled hosts
    you would reconstruct liveness from rate() windows. Liveness is a gauge.
@@ -34,7 +35,12 @@ GATUS = os.environ.get("GATUS_URL", "http://gatus-fleet.gatus-fleet.svc.cluster.
 # Same freshness rule the status bars use, so the glyph and Grafana cannot
 # disagree about what "up" means.
 STALE_AFTER = int(os.environ.get("FLEET_STALE_AFTER", "180"))
-ROSTER = [m for m in os.environ.get("FLEET_ROSTER", "").split() if m]
+# The roster document {roster, display}, mounted beside this script. Served as-is at
+# /roster: the status bars count against the same list Prometheus does.
+ROSTER_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "roster.json")
+with open(ROSTER_FILE, "rb") as fh:
+    ROSTER_DOC = fh.read()
+ROSTER = json.loads(ROSTER_DOC)["roster"]
 PORT = int(os.environ.get("PORT", "9300"))
 
 
@@ -148,6 +154,12 @@ class H(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+        elif self.path == "/roster":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(ROSTER_DOC)))
+            self.end_headers()
+            self.wfile.write(ROSTER_DOC)
         elif self.path == "/health":
             self.send_response(200)
             self.end_headers()

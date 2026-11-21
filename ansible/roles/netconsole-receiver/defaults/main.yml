@@ -3,5 +3,6 @@
 netconsole_port: 6666
 
 # Only these source IPs are logged; anything else on the LAN is dropped.
-# Derived from the inventory so adding a host to the group is the only step.
-netconsole_receiver_senders: "{{ groups['netconsole_senders'] | map('extract', hostvars, 'ansible_host') | list }}"
+# Derived from the inventory so adding a host to the group is the only step. The openwrt
+# group sends its logd syslog lines here too (roles/openwrt-base).
+netconsole_receiver_senders: "{{ (groups['netconsole_senders'] + groups['openwrt']) | map('extract', hostvars, 'ansible_host') | list }}"

@@ -1,0 +1,23 @@
+---
+# One role for every CI host: what the host's caps (ci_caps in inventory.yml) need. The CPU
+# and memory budget comes first, from ci-host-budget (meta). Tags keep the old entry points:
+# --tags unity-ci-host refreshes the Unity tooling alone, --tags ci-disk the disk guard alone.
+- name: Prepare the host for Unity jobs
+  ansible.builtin.import_tasks: unity.yml
+  when: ci_caps | default([]) | intersect(['unity', 'unity-build']) | length > 0
+  tags: [unity-ci, unity-ci-host]
+
+- name: Install the packages light and heavy jobs need
+  ansible.builtin.import_tasks: light.yml
+  when: ci_caps | default([]) | intersect(['light', 'heavy']) | length > 0
+  tags: [linux-ci, unity-ci]
+
+- name: Start docker for light and heavy jobs
+  ansible.builtin.import_tasks: docker.yml
+  tags: [linux-ci, unity-ci, unity-ci-host]
+
+# Every host, Unity-only ones too: without it aws-burst-1 filled its 400G CI volume on
+# 2026-11-05 with release-tree copies, and every runner died on "No space left on device".
+- name: Keep the disk from filling
+  ansible.builtin.import_tasks: disk.yml
+  tags: [ci-disk, linux-ci, unity-ci]

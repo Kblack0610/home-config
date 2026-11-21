@@ -66,7 +66,21 @@
     content: |
       # Managed by ansible (roles/crash-evidence). Do not edit by hand.
       kernel.printk = {{ netconsole_console_loglevel }} 4 1 3
-  notify: apply console loglevel
+
+# A task, not a handler: the read-back below runs before handlers, so a new
+# host's first apply failed on printk, and a rerun with the file unchanged never
+# applied it (deskslim-1, 2026-11-18).
+- name: Apply the console loglevel to the running kernel
+  ansible.builtin.shell: |
+    set -o pipefail
+    before=$(cut -f1 /proc/sys/kernel/printk)
+    /usr/sbin/sysctl -q -p /etc/sysctl.d/99-netconsole.conf
+    [ "$before" = "$(cut -f1 /proc/sys/kernel/printk)" ] || echo changed
+  args:
+    executable: /bin/bash
+  register: crash_evidence_printk
+  changed_when: "'changed' in crash_evidence_printk.stdout"
+  when: not ansible_check_mode
 
 - name: Enable netconsole
   ansible.builtin.systemd_service:

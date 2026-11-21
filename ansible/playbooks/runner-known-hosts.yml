@@ -1,0 +1,13 @@
+---
+# The ansible-runner pod's ~/.ssh/known_hosts, from the inventory's ssh_host_ed25519
+# (apps/ansible-runner/cronjob.yaml). It replaces the running user's ~/.ssh/known_hosts, so it fails
+# anywhere HOME_CONFIG_ANSIBLE_RUNNER_POD is not true. A host with no key there is not trusted, so ssh to it fails.
+- name: Trust the inventory's host keys in the runner pod
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Write known_hosts
+      ansible.builtin.import_role:
+        name: host-identity
+        tasks_from: runner_known_hosts

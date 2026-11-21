@@ -40,13 +40,6 @@ spec:
             # In-cluster: no need to go out through the tunnel and back.
             - name: GATUS_URL
               value: "http://gatus-fleet.gatus-fleet.svc.cluster.local:8080"
-            # THE ROSTER - who SHOULD be reporting. Must match FLEET_ROSTER in
-            # ~/.config/fleet-pulse/env, or Grafana and the status bars will
-            # disagree about what the fleet even is. A machine here but absent
-            # from gatus emits enrolled=0, which is the only way "never reported"
-            # becomes visible to Prometheus at all.
-            - name: FLEET_ROSTER
-              value: "gp-mac linux-cachyos windows-media mac-mini pi5-master pi5-worker1 pi5-worker2 pi5-worker3 pi4-worker4 pi4-worker5 asus-laptop hp-victus razer-laptop ms-a2 deskslim-2 h0001 h0002 h0003 audio-living audio-bedroom"
             # Same window the bars use, so the glyph and the dashboard cannot
             # disagree about "up".
             - name: FLEET_STALE_AFTER

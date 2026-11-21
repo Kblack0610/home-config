@@ -13,55 +13,48 @@ Machine liveness used to be scattered across three groups (`fleet`, `mac-machine
 
 ## Layout
 
+The machines and their roster live in one place, the `fleet_pulse` group of `ansible/inventory.yml`. `scripts/render-fleet-pulse.py` renders `config.yaml` here (from `config.base.yaml` plus an endpoint per machine) and `apps/fleet-exporter/roster.json`; CI's `render-fleet-pulse.py --check` fails a PR whose files are not what the inventory renders. Never edit `config.yaml` or `roster.json` by hand.
+
 | Group | Members | Mechanism |
 |---|---|---|
 | `workplace` | gp-mac | push |
-| `homelab` | linux-cachyos, windows-media | push |
+| `homelab` | linux-cachyos | push |
 | `homelab` | mac-mini | poll `:9100` |
-| `k3s` | pi5-master, pi5-worker1-3, pi4-worker4-5, asus-laptop, hp-victus, razer-laptop | poll `:9100` |
-| `android` | h0001 (+ tablets) | push (via `apps/headwind-fleet-bridge`) |
+| `k3s` | pi5-master, pi5-worker1-3, pi4-worker4-5, asus-laptop, hp-victus, razer-laptop, ms-a2, deskslim-2, tuf-b550 | poll `:9100` |
+| `android` | h0001-h0004, ken-s25-main | push (tablets via `apps/headwind-fleet-bridge`, the phone from Termux) |
 | `audio` | audio-living, audio-bedroom | poll `:9100`, plus snapclient's unit state (`node-exporter-linux` role) |
-| `iot` | pi-zero-1/2/3 | poll `:9200` |
 
-**Poll what you can reach; push what you can't.** Polled machines already export — node_exporter runs on every k3s node with `hostNetwork: true` (kube-prometheus-stack subchart) and on the Macs via the `node-exporter-mac` ansible role. **No new agent was installed for any of this**; polling nodes is pure config.
+**Poll what you can reach; push what you can't.** Polled machines already export - node_exporter runs on every k3s node with `hostNetwork: true` (kube-prometheus-stack subchart) and on the Macs via the `node-exporter-mac` ansible role. **No new agent was installed for any of this**; polling nodes is pure config. A polled machine is polled at its inventory `ansible_host`.
 
 ## The roster is load-bearing
 
-The status bars count against `$FLEET_ROSTER` (in `~/.config/fleet-pulse/env`), **not** against this config and not against the API's own rows.
+The status bars and fleet-exporter count against the roster, `roster.json`, which fleet-exporter serves at `fleet.kblab.me/roster` - **not** against this config and not against the API's own rows.
 
-**Gatus only materializes an external-endpoint once it receives that host's FIRST push.** A machine that is declared here but has never enrolled is absent from `/api/v1/endpoints/statuses` entirely — not stale, *missing*. Counting the API's rows drew the denominator from the same set as the numerator, so `healthy == total` held trivially and the glyph read GREEN while four of five machines had never reported once. The bug hid its own symptom. The roster is the independent answer to "who *should* be reporting".
+**Gatus only materializes an external-endpoint once it receives that host's FIRST push.** A machine that is declared here but has never enrolled is absent from `/api/v1/endpoints/statuses` entirely - not stale, *missing*. Counting the API's rows drew the denominator from the same set as the numerator, so `healthy == total` held trivially and the glyph read GREEN while four of five machines had never reported once. The bug hid its own symptom. The roster is the independent answer to "who *should* be reporting".
 
-Three rules follow:
+Rules the renderer enforces or the inventory states:
 
-1. **Names must be kebab-case.** `FLEET_ROSTER` is space-separated and the bars match on the `name` field, so `Mac Studio` could never be rostered. (Gatus separately derives `key = <group>_<name>`, lowercasing and mapping `/ _ , .` and whitespace to `-`.)
-2. **Machines that are off by design stay off the roster.** A laptop is closed most of the day; rostered, it would pin the glyph and the command-center health amber whenever it is. Declare such a machine here but leave it unrostered, and draw it in the waybar with a `~name=label` token, which shows its dot only while it is up. (The Razer was `cachy-laptop`, drawn that way, until 2026-10-26; as a k3s node it is always on, so it is rostered.)
-3. **`iot` is deliberately NOT in the roster.** The Pi Zeros sleep by design; counting them would pin the glyph amber forever. This mirrors `apps/monitoring/prometheus-rules-node-health.yaml`, which already excludes `iot-pi-nodes` from `NodeDown` "to avoid false pages". They're visible here; they just don't drive the glyph.
+1. **Names must be kebab-case.** The bars match on the `name` field, so `Mac Studio` could never be rostered; the renderer fails on one. (Gatus separately derives `key = <group>_<name>`, lowercasing and mapping `/ _ , .` and whitespace to `-`.)
+2. **Machines that are off by design stay off the roster.** A phone or laptop sleeps; rostered, it would pin the glyph and the command-center health amber whenever it is. Declare it with `fleet_pulse_roster: false` (a device: `roster: false`): it shows on this board, and a `fleet_pulse_display` label lists it in the waybar tooltip while it reports, never as a dot.
+3. **The iot Pi Zeros are not declared at all** while they are physically down. They sleep by design, and `apps/monitoring/prometheus-rules-node-health.yaml` already excludes `iot-pi-nodes` from `NodeDown` "to avoid false pages". Prometheus still scrapes them (`apps/monitoring/external-iot-nodes.yaml`). Re-adding them needs a poll port of `:9200` (pi-monitor), which the renderer does not have yet.
 
 ## Adding a machine
 
-- **Poll** (always-on, on-LAN, exporting): add an `endpoints:` entry. Take node IPs from `kubectl get nodes`, **not** `infrastructure/dhcp/devices.yaml` — that file omits the Pi Zeros, and disagrees with `ansible/inventory.yml` about pi4-worker5 (`.25` vs the real `.124`).
-- **Push** (roaming/off-LAN): add an `external-endpoints:` entry, then enroll the host (`~/.local/src/fleet-pulse/README.md`).
-- Either way: add the name to `FLEET_ROSTER` on each machine that renders the glyph, or it won't be counted.
+Add it to the `fleet_pulse` group in `ansible/inventory.yml` (the group's comment documents each variable; a k3s node is already in it through `k3s_nodes`), run `python3 scripts/render-fleet-pulse.py`, and commit the inventory with both rendered files. A pushed machine then enrolls (`~/.local/src/fleet-pulse/README.md` in dotfiles). Flux rolls both pods because each ConfigMap name carries a content hash, and every bar picks the new roster up on its next fetch.
 
 ## Retiring a machine
 
-A machine that is gone but still declared goes **stale, not absent** — it pins the fleet glyph amber forever and there is no server-side expiry to save you. The roster is written down in **four** places across **three** repos, and a retirement has to touch all four in the same change:
+A machine that is gone but still declared goes **stale, not absent** - it pins the fleet glyph amber forever and there is no server-side expiry to save you. Retiring it is deleting its line from the `fleet_pulse` group, or from `k3s_nodes` for a k3s node, and re-rendering: the endpoint, the roster entry and any display label go together. Gatus prunes the retired endpoint's stored statuses on startup (verified 2026-08-17).
 
-1. `config.yaml` here (drops the endpoint; the pod rolls because the ConfigMap hash changes, and gatus prunes the retired endpoint's stored statuses on startup — verified 2026-08-17).
-2. `FLEET_ROSTER` in `apps/fleet-exporter/deployment.yaml` (the Grafana/Prometheus denominator).
-3. `FLEET_ROSTER` in `~/.config/fleet-pulse/env` (the status-bar denominator) — in the `~/.dotfiles-private` overlay, so a **separate repo and separate PR**.
-4. `FLEET_DISPLAY` in `.config/waybar/fleet_pulse.sh` (which machines get their own labelled dot) — in the **public** `~/.dotfiles` repo, a third repo again.
+The bar still renders a display token naming a host that is on no roster and unknown to gatus as an amber `?`, not a red `○`, and names it in the tooltip. Absence-of-machine and absence-of-config used to share a glyph, which is how a retired machine hid.
 
-**Don't rely on remembering four files.** Two things check for you:
-
-- `scripts/check-fleet-roster.py` asserts every rostered name is declared here. CI runs the two-file half on every PR (`.forgejo/workflows/checks.yaml`); run it with `--roster-env ~/.config/fleet-pulse/env --display ~/.dotfiles/.config/waybar/fleet_pulse.sh` to cover all four at once.
-- The bar itself renders a token naming a host that is on no roster and unknown to gatus as an amber `?`, not a red `○`, and names it in the tooltip. Absence-of-machine and absence-of-config used to share a glyph, which is exactly how a retired machine hid.
-
-Worked example: `lazer-machine` (the Deloitte VDI) was retired on 2026-08-17 when the contract ended. Places 1–3 were updated and place 4 was missed — the bar kept drawing a red `lzr○` that looked like an outage. That miss is what both checks above exist to prevent.
+Worked example: `lazer-machine` (the Deloitte VDI) was retired on 2026-08-17 when the contract ended. The roster was then written down in four places across three repos; three were updated and the waybar's display list was missed, so the bar kept drawing a red `lzr○` that looked like an outage. The roster now has one home, so a retirement is one edit.
 
 ## Ingress: why crowdsec and not the IP allowlist
 
 `monitoring-local-network-only` is a **verified no-op** on any `*.kblab.me` host. Traefik here has no `forwardedHeaders`/`trustedIPs`, so `ipAllowList` matches the *connecting* IP — for tunnel traffic that's the cloudflared pod at `10.42.x.x`, inside its own `10.0.0.0/8` range. Every tunnel request looks LAN-local to it. Confirmed live: `fleet.kblab.me` carried that middleware and still answered HTTP 200 from the Cloudflare edge. crowdsec works because its middleware sets `trustForwardHeader: true` and reads the real client IP from `X-Forwarded-For`.
+
+Both Ingresses on this host, `gatus-fleet` and `gatus-fleet-roster` (the `/roster` path, split out for its router priority), carry the same crowdsec middleware.
 
 This host **is** internet-reachable — external-dns runs with no `--domain-filter` and the tunnel is a wildcard catch-all, so every `*.kblab.me` Ingress is public whether intended or not. That's exactly why the work laptop can reach it. The dashboard being publicly *readable* is an accepted trade, identical to `status.kblab.me` today.
 

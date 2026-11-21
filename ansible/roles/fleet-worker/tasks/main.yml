@@ -1,8 +1,10 @@
 ---
 # A fleet worker takes light claude sessions that fleet-dispatch places over
 # ssh (dotfiles .local/lib/fleet-hosts.sh). This role installs what such a
-# session runs and reports what only the human can do: sign each account in
-# and let the worker's key reach the state host. It copies no token.
+# session runs, joins the agent store as a peer (tasks/store.yml), sets up what the
+# fleet lease's holder runs (tasks/peer.yml), puts each Claude account's long-lived token on it
+# (`claude-acct token push`, from the controller's unlocked rbw) and reports what only the human
+# can do: add its store key on Forgejo.
 # Runbook: docs/runbooks/fleet-worker.md.
 
 - name: Install the session toolchain
@@ -38,11 +40,10 @@
     executable: /bin/bash
     creates: "{{ ansible_env.HOME }}/.local/bin/claude"
 
-# Cloned at main, then kept there by the dotfiles' own dotfiles-autopull (every
-# shell start, at most each 6h), not by this task: main moves many times a day, so
-# update here would report a change on every --check. A worker left behind is
-# still caught: an older agent-queue writes the queue on the worker instead of
-# forwarding it, and fleet-dispatch's probe refuses such a worker.
+# Cloned at main, then kept there by the dotfiles' own dotfiles-autopull, which
+# dotfiles-autopull.timer below runs (no shell starts on a headless worker), not by
+# this task: main moves many times a day, so update here would report a change on
+# every --check.
 # No submodules: two are private ssh remotes a fresh worker cannot reach, and
 # a session needs none of them.
 - name: Clone the public dotfiles, at main
@@ -77,7 +78,7 @@
 # agent-panel lists this worker's sessions: the workstation's fleet-sessions runs
 # `agent-panel list --json` over ssh, and a worker without it never shows any.
 # A narrow task, not the dotfiles' build_local_rust_tools: that also builds
-# agent-web, hub and timebox, which a worker does not run. Arch only: apt's
+# agent-web, hub and timebox; tasks/peer.yml builds agent-web and hub and installs notes. Arch only: apt's
 # cargo (1.75 on Ubuntu 24.04) is older than the Cargo.lock v4 and clap 4.6 here.
 # A rebuild on each play is incremental; no timer rebuilds it between plays yet.
 - name: Build agent-panel (cargo, as the user)
@@ -113,17 +114,168 @@
     executable: /bin/bash
     creates: "{{ ansible_env.HOME }}/.dotfiles-private"
 
+- name: Set up the headless harnesses it runs (fleet_harnesses)
+  when: fleet_harnesses | default([]) | length > 0
+  ansible.builtin.include_tasks: harnesses.yml
+
 # Same path as on the workstation: fleet-dispatch places an item only when its
 # repo's checkout is in this list, and opens the session at that path here.
 - name: Clone the repos sessions run in (fleet_repos)
   ansible.builtin.git:
     repo: "{{ item.repo }}"
     dest: "{{ item.dest }}"
+    remote: "{{ item.remote | default(omit) }}"
     update: false
   loop: "{{ fleet_repos | default([]) }}"
   loop_control:
     label: "{{ item.dest }}"
   failed_when: false   # a private repo needs gh auth first; the report names it
+
+# fleet-hosts.sh reads the roster (inventory.yml) from this checkout's forgejo/master,
+# found by its path in the project map. Without it fleet-dispatch on this worker,
+# when it holds the fleet lease, sees no other workers. Public on Forgejo, so no key. Kept fetched by fleet-roster-fetch.timer.
+- name: Clone home-config, where the fleet roster is read
+  ansible.builtin.git:
+    repo: "{{ fleet_worker_roster_repo }}"
+    dest: "{{ ansible_env.HOME }}/dev/home/home-config"
+    remote: forgejo
+    version: master
+    update: false
+
+# A worker has no rbw, so a session there pushes and opens home-config PRs as the bot
+# fleet_worker_forgejo_user, with its token from SOPS. forgejo-token (dotfiles) reads this file
+# after FORGEJO_TOKEN and before rbw, for agent-land and schedules-sync. Runbook:
+# docs/runbooks/fleet-worker.md, "Forgejo bot token".
+- name: Make the Forgejo token dir
+  ansible.builtin.file:
+    path: "{{ ansible_env.HOME }}/.config/forgejo"
+    state: directory
+    mode: "0700"
+
+- name: Write the Forgejo bot token
+  ansible.builtin.copy:
+    dest: "{{ ansible_env.HOME }}/.config/forgejo/token"
+    mode: "0600"
+    content: "{{ vault_fleet_forgejo_token }}\n"
+  no_log: true
+
+# Repo-local, so the token answers only for this clone and the worktrees made from it, never
+# for another repo. It is read at push time, so a rotated token needs only this play's file.
+- name: Set the git credential helper this clone answers Forgejo with
+  ansible.builtin.set_fact:
+    _fleet_forgejo_helper: >-
+      !f() { [ "$1" = get ] || return 0; t=$("$HOME/.dotfiles/.local/bin/forgejo-token") || return 1;
+      printf 'username=%s\npassword=%s\n' {{ fleet_worker_forgejo_user }} "$t"; }; f
+
+- name: Read the clone's git credential helpers for Forgejo
+  ansible.builtin.command: git -C {{ ansible_env.HOME }}/dev/home/home-config config --local --get-all credential.{{ fleet_worker_forgejo_url }}.helper
+  register: _fleet_forgejo_helpers
+  changed_when: false
+  failed_when: _fleet_forgejo_helpers.rc not in [0, 1]
+  check_mode: false
+
+# The empty entry first resets the list, so the global `store` helper (the private overlay's
+# ~/.config/git/private.inc) neither answers for this clone nor saves a second copy of the
+# token in ~/.git-credentials, which a rotation would leave stale and git would try first.
+- name: Point the clone's git credential for Forgejo at forgejo-token, and only it
+  when: _fleet_forgejo_helpers.stdout_lines != ['', _fleet_forgejo_helper]
+  ansible.builtin.shell: |
+    git -C "$R" config --local --unset-all "$K" || true
+    git -C "$R" config --local --add "$K" ''
+    git -C "$R" config --local --add "$K" "$V"
+  environment:
+    R: "{{ ansible_env.HOME }}/dev/home/home-config"
+    K: credential.{{ fleet_worker_forgejo_url }}.helper
+    V: "{{ _fleet_forgejo_helper }}"
+
+# Without lingering, every user unit (the roster fetch, store-sync, and on the lease
+# holder agent-web and the lanes) stops when the last login ends, and a headless
+# worker has no login.
+- name: Keep the user's units running with nobody logged in (linger)
+  become: true
+  ansible.builtin.command: loginctl enable-linger {{ ansible_user_id }}
+  args:
+    creates: /var/lib/systemd/linger/{{ ansible_user_id }}
+
+# fleet-hosts also fetches on a read once the last fetch is FLEET_ROSTER_MAX_SECS
+# old, but a sandboxed lane cannot take its lock and reads the ref as it is.
+- name: Install the roster fetch timer
+  ansible.builtin.copy:
+    dest: "{{ ansible_env.HOME }}/.config/systemd/user/{{ item.name }}"
+    mode: "0644"
+    content: "{{ item.content }}"
+  loop:
+    - name: fleet-roster-fetch.service
+      content: |
+        # Written by home-config roles/fleet-worker (tasks/main.yml).
+        [Unit]
+        Description=Fetch the fleet roster (home-config forgejo/master)
+        [Service]
+        Type=oneshot
+        ExecStart=/bin/bash -c '. %h/.dotfiles/.local/lib/fleet-hosts.sh && fleet_roster_fetch'
+    - name: fleet-roster-fetch.timer
+      content: |
+        # Written by home-config roles/fleet-worker (tasks/main.yml).
+        [Unit]
+        Description=Fetch the fleet roster every 10 minutes, inside fleet-hosts' 15-minute max age
+        [Timer]
+        OnBootSec=1min
+        OnUnitActiveSec=10min
+        [Install]
+        WantedBy=timers.target
+  loop_control:
+    label: "{{ item.name }}"
+  register: _fleet_worker_roster_units
+
+# --check writes no unit, so systemd would not find one it has not seen yet.
+- name: Start the roster fetch timer
+  when: not (ansible_check_mode and _fleet_worker_roster_units is changed)
+  ansible.builtin.systemd_service:
+    name: fleet-roster-fetch.timer
+    scope: user
+    enabled: true
+    state: started
+    daemon_reload: "{{ _fleet_worker_roster_units is changed }}"
+
+# The dotfiles pull themselves at an interactive shell start (~/.zshrc), and a headless
+# worker opens none: razer-laptop sat 27 commits behind from 11-08 to 11-18, so
+# store-sync never got linked. Hourly; the script's own 6h throttle sets the real pace.
+- name: Install the dotfiles pull timer
+  ansible.builtin.copy:
+    dest: "{{ ansible_env.HOME }}/.config/systemd/user/{{ item.name }}"
+    mode: "0644"
+    content: "{{ item.content }}"
+  loop:
+    - name: dotfiles-autopull.service
+      content: |
+        # Written by home-config roles/fleet-worker (tasks/main.yml).
+        [Unit]
+        Description=Bring ~/.dotfiles and ~/.dotfiles-private to main and link what they add
+        [Service]
+        Type=oneshot
+        ExecStart=%h/.local/bin/dotfiles-autopull
+    - name: dotfiles-autopull.timer
+      content: |
+        # Written by home-config roles/fleet-worker (tasks/main.yml).
+        [Unit]
+        Description=Pull the dotfiles hourly; dotfiles-autopull itself skips a pass under 6h old
+        [Timer]
+        OnBootSec=5min
+        OnUnitActiveSec=1h
+        [Install]
+        WantedBy=timers.target
+  loop_control:
+    label: "{{ item.name }}"
+  register: _fleet_worker_pull_units
+
+- name: Start the dotfiles pull timer
+  when: not (ansible_check_mode and _fleet_worker_pull_units is changed)
+  ansible.builtin.systemd_service:
+    name: dotfiles-autopull.timer
+    scope: user
+    enabled: true
+    state: started
+    daemon_reload: "{{ _fleet_worker_pull_units is changed }}"
 
 - name: Read which repos are cloned
   ansible.builtin.stat:
@@ -142,68 +294,77 @@
   failed_when: false
   check_mode: false
 
-- name: Create each account dir, empty (the human signs each one in)
+- name: Create each account dir (the session signs in with the pushed token; fleet-dispatch start runs claude-acct link there, which shares the setup and marks first-run done)
   ansible.builtin.file:
     path: "{{ item | regex_replace('^~', ansible_env.HOME) }}"
     state: directory
     mode: "0700"
   loop: "{{ ['~/.claude'] + fleet_worker_accounts.stdout_lines }}"
 
-- name: Make the key this worker reaches the state host with
-  ansible.builtin.command: ssh-keygen -q -t ed25519 -N '' -C "fleet-worker {{ inventory_hostname }}" -f {{ ansible_env.HOME }}/.ssh/id_ed25519
-  args:
-    creates: "{{ ansible_env.HOME }}/.ssh/id_ed25519"
+# Every roster machine's key comes from the inventory (ssh_host_ed25519), never a scan, so the
+# lease holder's fleet-dispatch reaches each worker, and a host that is off cannot leave it untrusted.
+- name: Trust the roster's host keys
+  ansible.builtin.import_role:
+    name: host-identity
+    tasks_from: known_hosts
 
-# The home is the state host itself: nothing to reach.
-- name: Trust the state host's host key
-  when: not fleet_worker_is_home | bool
-  ansible.builtin.known_hosts:
-    name: "{{ fleet_state_host }}"
-    # OpenSSH 10 also prints a "# host:22 SSH-2.0-..." banner line on stdout; kept in
-    # the key, it never matches known_hosts and the task appends the pair on every run.
-    key: "{{ lookup('ansible.builtin.pipe', 'ssh-keyscan -t ed25519 ' ~ fleet_state_host ~ ' 2>/dev/null | grep -v ^#') }}"
-    state: present
+# Before peer.yml: a join stops agent-web, which peer.yml starts again.
+- name: Join the agent store as a peer
+  ansible.builtin.include_tasks: store.yml
 
-- name: Read whether the worker reaches the state host
-  when: not fleet_worker_is_home | bool
-  ansible.builtin.command: ssh -o BatchMode=yes -o ConnectTimeout=5 {{ fleet_state_host }} true
-  register: fleet_worker_state_ssh
-  changed_when: false
-  failed_when: false
-  check_mode: false
+- name: Set up what the fleet lease's holder runs (agent-web, the lanes, schedules-sync)
+  ansible.builtin.include_tasks: peer.yml
 
-- name: Set up the fleet home
-  when: fleet_worker_is_home | bool
-  ansible.builtin.include_tasks: home.yml
-
-- name: Read whether each account is signed in
-  ansible.builtin.stat:
-    path: "{{ item | regex_replace('^~', ansible_env.HOME) }}/.credentials.json"
-  loop: "{{ ['~/.claude'] + fleet_worker_accounts.stdout_lines }}"
-  register: fleet_worker_signed
-
-- name: Read the worker's public key
-  ansible.builtin.slurp:
-    src: "{{ ansible_env.HOME }}/.ssh/id_ed25519.pub"
-  register: fleet_worker_pub
+# The worker has no unlocked rbw (headless, rebooted with nobody to unlock it), so the
+# controller's claude-acct copies every account's token to it over ssh stdin and reads each back
+# through the worker's own claude-acct. Runs after the dotfiles are on the worker. A failure is
+# reported, not fatal; --check skips it, since it writes secrets.
+# Doc: dotfiles docs/operations/claude-acct-tokens.md.
+- name: Put the Claude account tokens on the worker
+  ansible.builtin.command:
+    argv:
+      - "{{ lookup('env', 'HOME') }}/.local/bin/claude-acct"
+      - token
+      - push
+      - "{{ ((hostvars[inventory_hostname].ansible_user ~ '@') if hostvars[inventory_hostname].ansible_user is defined else '') ~ (fleet_ssh_host | default(inventory_hostname)) }}"
+  delegate_to: localhost
+  register: fleet_worker_tokens
   failed_when: false
 
 - name: Report what only the human can do
   vars:
-    fleet_worker_unsigned: "{{ fleet_worker_signed.results | rejectattr('stat.exists') | map(attribute='item') | list }}"
     fleet_worker_left: >-
       {{ ([] if fleet_worker_gh.rc == 0 else ['gh auth login, then re-run this play for the private overlay'])
-         + ([] if fleet_worker_is_home | bool or fleet_worker_state_ssh.rc | default(1) == 0 else
-            ['on ' ~ fleet_state_host ~ ', add this key to ~/.ssh/authorized_keys: '
-             ~ (fleet_worker_pub.content | default('') | b64decode | trim)])
-         + (fleet_worker_unsigned | map('regex_replace', '^', 'sign in: CLAUDE_CONFIG_DIR=') | map('regex_replace', '$', ' claude, then /login') | list)
+         + ([] if fleet_worker_tokens.rc | default(0) == 0 else
+            ['Claude tokens not pushed: ' ~ ('rbw unlock on this machine, then re-run' if fleet_worker_tokens.rc == 2
+              else (fleet_worker_tokens.stderr_lines | default([]) | join('; ') | default('rc ' ~ fleet_worker_tokens.rc, true)))])
          + (fleet_worker_clones.results | rejectattr('stat.exists') | map(attribute='item.dest')
             | map('regex_replace', '^', 'not cloned: ') | list)
-         + (fleet_home_left | default([])) }}
+         + fleet_store_left
+         + (fleet_home_left | default([]))
+         + (fleet_harness_left | default([])) }}
   ansible.builtin.debug:
     msg: >-
-      {{ ('Ready: ' ~ inventory_hostname ~ ' is the fleet home; run agentctl reload there to arm the lanes.')
-         if fleet_worker_is_home | bool and fleet_worker_left | length == 0 else
-         'Ready: set fleet_place: true for ' ~ inventory_hostname ~ ' in inventory.yml to let fleet-dispatch place sessions here.'
+      {{ ('Ready: ' ~ inventory_hostname ~ ' is a peer of the store; set fleet_place: true in inventory.yml to let fleet-dispatch place sessions here.')
          if fleet_worker_left | length == 0 else
          'Left for the human on ' ~ inventory_hostname ~ ': ' ~ (fleet_worker_left | join('; ')) }}
+
+# Last, so a wrong, expired or under-scoped bot token (tasks above, "Write the Forgejo bot
+# token") fails the play loudly after everything else is set up, not a session at its push.
+- name: Ask Forgejo what the bot token may do on home-config
+  ansible.builtin.uri:
+    url: "{{ fleet_worker_forgejo_url }}/api/v1/repos/kblack0610/home-config"
+    headers:
+      Authorization: "token {{ vault_fleet_forgejo_token }}"
+  register: _fleet_forgejo_repo
+  check_mode: false
+  failed_when: false
+  no_log: true
+
+- name: Check the bot token can push home-config
+  ansible.builtin.assert:
+    that: _fleet_forgejo_repo.json.permissions.push | default(false)
+    fail_msg: >-
+      the Forgejo bot token cannot push kblack0610/home-config (HTTP {{ _fleet_forgejo_repo.status | default('none') }}):
+      rotate vault_fleet_forgejo_token, docs/runbooks/fleet-worker.md "Forgejo bot token"
+    quiet: true

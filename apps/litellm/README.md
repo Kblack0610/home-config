@@ -8,7 +8,8 @@ LLM gateway deployment in the `ai-gateway` namespace, exposed through Traefik at
 |------|---------|
 | `kustomization.yaml` | Reconciles the namespace, app, service, and ingress |
 | `configmap.yaml` | LiteLLM config mounted into the container |
-| `secret.sops.yaml` | SOPS-encrypted `litellm-db-secrets`: DATABASE_URL, salt key, UI creds, Lazer, Gemini, OpenCode Go, NVIDIA NIM, DeepSeek and Z.ai keys |
+| `secret.sops.yaml` | SOPS-encrypted `litellm-db-secrets`: DATABASE_URL, salt key, UI creds and every provider key; SOPS leaves the key names in plain text, so the file itself is the list |
+| `test_go_routes.py` | The static admission gate, run by `.forgejo/workflows/checks.yaml`: Go header forwarding and the free-route invariants (see "Add a provider") |
 | `deployment.yaml` | Main gateway workload and health checks |
 | `service.yaml` | Cluster service on port `4000` |
 | `ingress.yaml` | TLS ingress for `llm.kblab.me`, kept off public DNS |
@@ -72,8 +73,8 @@ The seven routes tagged `binks-eval` (GLM-5.3-Flash, Qwen3.8-Flash, Qwen3.7-Plus
 
 | Key | Models | Budgets | Consumer | Key file |
 |---|---|---|---|---|
-| `binks-issuer` | the two binks routes | the user's $50 / 1mo | binks-api `LITELLM_ISSUER_KEY`: mints `binks-user-<id>` keys ($2 / 1mo each, `metadata.binks_user_id`) | rbw `litellm-binks-issuer-key` |
-| `binks-anon` | the two binks routes | `max_budget` $10 / 1mo, rpm 30 | binks-api `LITELLM_API_KEY`: anonymous chats and every chat when the issuer key is unset | rbw `litellm-binks-anon-key` |
+| `binks-issuer` | the two binks routes and `image (glm-image)` (added 2026-11-17, `/user/update` and `/key/update`) | the user's $50 / 1mo | binks-api `LITELLM_ISSUER_KEY`: mints `binks-user-<id>` keys ($2 / 1mo each, `metadata.binks_user_id`) | rbw `litellm-binks-issuer-key` |
+| `binks-anon` | the two binks routes | `max_budget` $10 / 1mo, rpm 300 (raised from 30 on 2026-11-18: a 100-turn burst on binks.chat needs over 100 a minute; it stays under the two routes' 660 combined) | binks-api `LITELLM_API_KEY`: anonymous chats and every chat when the issuer key is unset | rbw `litellm-binks-anon-key` |
 
 Revoke one user's key with `/key/delete` on its alias; binks-api mints a new one on the next turn.
 
@@ -89,19 +90,23 @@ Revoke one user's key with `/key/delete` on its alias; binks-api mints a new one
 
 ### NVIDIA NIM key
 
-`free-deepseek (deepseek-v4.1-flash)` is NVIDIA's free API catalog tier (key `NVIDIA_NIM_API_KEY`, from rbw `nvidia-nim-api-key`): about 40 requests/min shared across the key, $0, evaluation terms, so fleet trial work only and never client work. Its key sits in no team, like `fleet-go`. The route is priced at 0 and capped at rpm 35, so a refusal is a 429 that fails the call: no fallback edge.
+`free-minimax (minimax-m3.1-flash)` is NVIDIA's free API catalog tier (key `NVIDIA_NIM_API_KEY`, from rbw `nvidia-nim-api-key`): about 40 requests/min shared across the key, $0, evaluation terms, so fleet trial work only and never client work. Its key sits in no team, like `fleet-go`. The route is priced at 0 and capped at rpm 15 (every route on the key must sum under its `# key-limit` of 40, `test_go_routes.py`), so a refusal is a 429 that fails the call: no fallback edge. NVIDIA retires catalog models: a retired one answers 410 Gone and `LiteLLMUpstreamUnhealthy` fires for its route. List what the key can still reach with `GET https://integrate.api.nvidia.com/v1/models`, then repoint the route or remove it. A model can also hang without an error: `z-ai/glm-5.3-flash` sent no bytes for 90s on 2026-11-19, so the route moved to `minimaxai/minimax-m3.1-flash`; the `free-routes` watch (`llm-probe admit`) catches a hang.
+
+`fleet-nim` is the `fleet-trial` key: every free route whose provider does not train on prompts joins it, so one key and one watch line cover them. Groq (`GROQ_API_KEY`, rbw `llm/groq-api-key`) serves `free-gpt-oss (gpt-oss-120b)` and `free-qwen (qwen3.8-27b)`: per model 30 rpm, 1K requests/day and 8K tokens/min, which fits one-shot calls but not an agent harness turn. Cloudflare Workers AI (`CLOUDFLARE_WORKERS_AI_API_KEY`, rbw `llm/cloudflare-workers-ai-api-key`, account id in its username field and in the route's `api_base`) serves `free-llama (llama-3.3-70b)` on Workers Free: 10,000 Neurons/day, after which calls fail, never bill. Its `/ai/v1/models` answers 405, so `llm-probe admit` skips the listed stage.
 
 | Key | Models | Budgets | Consumer | Key file |
 |---|---|---|---|---|
-| `fleet-nim` | `free-deepseek (deepseek-v4.1-flash)` | none (free; rpm 35 on the route) | fleet-dispatch harness `nim` (priority low) | `~/.local/state/agentctl/fleet-nim.key` |
+| `fleet-nim` | `free-minimax (minimax-m3.1-flash)`, `free-gpt-oss (gpt-oss-120b)`, `free-qwen (qwen3.8-27b)`, `free-llama (llama-3.3-70b)` | none (free; rpm on each route) | fleet-dispatch harness `nim` (priority low, minimax only); hand one-shot calls and the `free-routes` watch for the rest | `~/.local/state/agentctl/fleet-nim.key` |
 
 ### OpenCode free key
 
-The three `opencode-free (...)` routes are OpenCode's free models (beam-free, longcat-2.5-free, iceman-contributor-free) on the Go base and `OPENCODE_GO_API_KEY`, priced 0 by Go and here; the anonymous Zen endpoint refuses them with 429 FreeUsageLimitError. Their providers may train on prompts, which the human accepted on 2026-11-11 for public input only: public repos, canary replays of public PRs, web summaries, never a private or client repo. Three fences hold that: only `fleet-ocfree` lists the routes, so any other key gets a 403 (on 2026-11-11 every one of the 21 keys carried a model list; teams `lazer-core` and `lazer-pool` allow every model, so a key minted into one of them without a model list, or the master key, would reach the routes too); its one consumer, fleet-dispatch harness `ocfree`, starts only for a project in that harness's `projects` allowlist (dotfiles-private `.config/agentctl/harnesses.json`); and its runs load no global opencode, Claude Code or home-dir rules (the harness's `config_dir`), so no private instructions ride along. OpenCode rotates the free list, so a dropped model answers 400 "Model is unavailable"; delete its route then. No fallback edge, like the Go routes.
+The two `opencode-free (...)` routes are OpenCode's free models (beam-free, longcat-2.5-free) on the Go base and `OPENCODE_GO_API_KEY`, priced 0 by Go and here; the anonymous Zen endpoint refuses them with 429 FreeUsageLimitError. Their providers may train on prompts, which the human accepted on 2026-11-11 for public input only: public repos, canary replays of public PRs, web summaries, never a private or client repo. Three fences hold that: only `fleet-ocfree` lists the routes, so any other key gets a 403 (on 2026-11-11 every one of the 21 keys carried a model list; teams `lazer-core` and `lazer-pool` allow every model, so a key minted into one of them without a model list, or the master key, would reach the routes too); its one consumer, fleet-dispatch harness `ocfree`, starts only for a project in that harness's `projects` allowlist (dotfiles-private `.config/agentctl/harnesses.json`); and its runs load no global opencode, Claude Code or home-dir rules (the harness's `config_dir`), so no private instructions ride along. OpenCode rotates the free list, so a dropped model answers 400 "Model is unavailable"; delete its route then. The same goes for a model OpenCode moves behind the console's "Allow paid endpoints that train on request data" (a 400 that names it): turning that on is the human's call, so the route goes until they do (iceman-contributor-free, 2026-11-19, ar-3488). No fallback edge, like the Go routes.
+
+`fleet-ocfree` is the `public-input-only` key: every free route whose provider may train on prompts joins it, under the same fences. OpenRouter (`OPENROUTER_API_KEY`, rbw `llm/openrouter-api-key`, no credits bought) serves `free-particle (particle-1)`, Particle AI's coding model as `particle-ai/particle-1:free`: 20 rpm and 50 requests/day per key, so the route runs at rpm 2 and a 429 past the daily cap fails the call. OpenRouter rotates `:free` models: list the current ones with tool calls from `GET https://openrouter.ai/api/v1/models` (`supported_parameters` has `tools`), then repoint the route or remove it.
 
 | Key | Models | Budgets | Consumer | Key file |
 |---|---|---|---|---|
-| `fleet-ocfree` | the three `opencode-free (...)` routes | $1 / 7d, a tripwire only (the routes are priced 0; rpm 20 each) | fleet-dispatch harness `ocfree` (priority low) | `~/.local/state/agentctl/fleet-ocfree.key` |
+| `fleet-ocfree` | the two `opencode-free (...)` routes, `free-particle (particle-1)` | $1 / 7d, a tripwire only (the routes are priced 0; rpm 20 each on the OpenCode routes, rpm 2 on OpenRouter) | fleet-dispatch harness `ocfree` (priority low, OpenCode routes only); hand one-shot calls and the `free-routes` watch for OpenRouter | `~/.local/state/agentctl/fleet-ocfree.key` |
 
 ### Local model key
 
@@ -160,13 +165,28 @@ curl -sX POST https://llm.kblab.me/key/delete \
   -d '{"keys": ["sk-..."]}'
 ```
 
+## Add a provider
+
+A new free or cheap upstream enters in this order, and each step must pass before the next. The plan behind it: `plsae-list-every-cheap-federated-eclipse`.
+
+1. **Account and key.** The agent makes the account and the API key itself (the `vendor-accounts` skill; rules in [credentials.md](../../docs/credentials.md)) and saves the key as rbw `llm/<provider>-api-key`. Paying, or a trial that needs a card, is the human's: file it, do not wait on it.
+2. **Login health.** Add a row to `~/.config/agentctl/vendors` (`probe=http url=<base>/v1/models auth=bearer`) and check it with `vendor-check <provider>`.
+3. **Secret.** `sops apps/litellm/secret.sops.yaml` and add `<PROVIDER>_API_KEY`.
+4. **Route.** Add a `free-<model> (<model-id>)` route to `config.yaml`, next to a comment that says what the tier allows and a dated limit line for its key: `# key-limit <PROVIDER>_API_KEY: rpm <N> (<the provider's page>, read <YYYY-MM-DD>)`, or `none published (...)` when the provider gives no rpm. Read the number from the provider's own page. A route tagged `free` must have:
+   - `input_cost_per_token: 0` and `output_cost_per_token: 0`;
+   - an `rpm` under the published limit, where the rpm of every route on that key, paid ones too, sums under it;
+   - a data-class tag: `public-input-only` when the provider may train on prompts, `fleet-trial` when its terms allow evaluation only (fleet trial work, never client or personal data);
+   - no edge in `router_settings` (`fallbacks`, `*_fallbacks`, `model_group_alias`), so a free-tier refusal fails the call and never reaches a paid route.
+
+   `python3 apps/litellm/test_go_routes.py` checks all four, and the PR's CI runs it. `free` means a third-party free tier: a paid route priced 0 (`stt (whisper-turbo)`) or the self-hosted `local (qwen3.5-9b)` does not carry it. A free route that predates the gate and fails it sits in `KNOWN_VIOLATIONS` with its board row, until it is fixed.
+5. **Gateway key.** Add the route to the narrowest key that matches its data class: `fleet-ocfree` for `public-input-only`, `fleet-nim` for `fleet-trial` (`/key/update`, `models`), so any other key gets a 403. Add a row for it under the key's section above.
+6. **Live gate.** After Flux reconciles, `llm-probe admit <key-file> <route>` (dotfiles-private `.local/bin/llm-probe`; with no route it admits every route the key sees) must print `PASS <route>`: the model listed at the provider, a 200 through the gateway with no attempted fallbacks, cost 0, a tool call when the route claims function calling, and a 403 for the same key on a paid route.
+7. **Quality.** Add a `harnesses.json` model line and a `canary-lanes` line, so `fleet-bench canary` grades it. A new source enters as a canary, never as a lane's first pick.
+8. **Ongoing.** Add the route's gateway key file to the `free-routes` Sentinel watch (`~/.agent/watches/free-routes.yaml`, `expect_cmd`), which runs `llm-probe admit` on every free key once a day. When the provider has a Statuspage feed (`/api/v2/incidents/unresolved.json`), add a row to `PROVIDERS` in `provider-status` (dotfiles `.local/bin`); Groq, OpenRouter, Hugging Face and Together have none. Next to the alerts `LiteLLMUpstreamUnhealthy` and `LiteLLMRouteHighFailureRate`, which only see routes that carry traffic.
+
 ## Deploy
 
-```bash
-kubectl apply -k apps/litellm
-```
-
-Prefer committing manifest changes and reconciling through Flux for normal operations.
+Flux applies this directory: commit, push to forgejo, and either wait for the next sync or run `flux reconcile kustomization apps --with-source`. Never `kubectl apply` it (CLAUDE.md, "Deployment Model").
 
 ## Verify
 

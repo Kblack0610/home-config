@@ -25,13 +25,13 @@ POST http://gatus.gatus.svc:8080/api/v1/endpoints/fleet_<device>/external?succes
 
 When you enroll a tablet in Headwind, do two things so it shows up:
 
-1. **Declare it in gatus** - add an `external-endpoints` entry to `apps/gatus/configmap.yaml`
-   (`group: fleet`, `name: <device>`), matching the device's Headwind `number` after
-   gatus's slug rule (lowercase; `/ _ , . space` -> `-`). The bridge logs the exact key it
-   tries (`fleet_<slug>`); use that.
-2. **Add it to the readers' roster** - append the same `fleet_<slug>` name to `FLEET_ROSTER`
-   in `~/.config/fleet-pulse/env` so the bar counts it (see the fleet-pulse README: absent
-   from the roster = uncounted; absent from the API but in the roster = amber).
+1. **Declare it** - add a `fleet_pulse_devices` entry (`group: android`, `name: <device>`) to
+   the `fleet_pulse` group in `ansible/inventory.yml`, matching the device's Headwind `number`
+   after gatus's slug rule (lowercase; `/ _ , . space` -> `-`). The bridge logs the exact key
+   it tries; use its name part.
+2. **Render** - `python3 scripts/render-fleet-pulse.py` writes the gatus endpoint and puts the
+   name on the roster the bars count (`roster: false` leaves it uncounted; on the roster but
+   absent from the API = amber).
 
 Until step 1, the bridge just logs `skip fleet_<slug>: not declared in gatus` - harmless.
 

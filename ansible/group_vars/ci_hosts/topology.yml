@@ -1,0 +1,14 @@
+---
+# Each of this host's CI slots and the job kinds it takes (slot name -> caps), read from
+# apps/ci-topology/topology.json, which scripts/render-ci-topology.py renders from
+# inventory.yml. The runner plays (playbooks/site.yml) label every slot with its caps, so
+# which slot takes which kind is decided in the renderer alone.
+ci_slot_caps: >-
+  {{ (lookup('file', inventory_dir ~ '/../apps/ci-topology/topology.json') | from_json).hosts[inventory_hostname].slots
+     | items2dict(key_name='name', value_name='caps') }}
+# This host's seats: the runners with no slot of their own, each borrowing one of its Unity
+# slots ("borrows", the slot's runner name) while ci-runner-governor lends it. "forge" is
+# forgejo on a Forgejo seat; a repo seat (ci_repo_runners) has none.
+ci_seats: >-
+  {{ (lookup('file', inventory_dir ~ '/../apps/ci-topology/topology.json') | from_json).hosts[inventory_hostname].slots
+     | selectattr('borrows', 'defined') | list }}

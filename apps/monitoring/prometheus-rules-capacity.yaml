@@ -22,25 +22,36 @@ spec:
           expr: node_load15 / on (instance) count by (instance) (node_cpu_seconds_total{mode="idle"})
         # One series per real device. Excluded: pseudo filesystems, network shares
         # (the server reports them), and Mac simulator and system volumes, which are
-        # always full by design. `min by device` folds btrfs subvolumes into one.
+        # always full by design: CoreSimulator's own mounts and the sealed read-only
+        # simulator runtimes newer Xcode mounts through cryptexd under /private/var/run.
+        # A read-only mount cannot fill, so it is dropped here and from the inode ratio below:
+        # a mounted installer image (mac-mini, 2026-11-19: a 22 MB Unity Accelerator .dmg at
+        # 14% free) is not low disk.
+        # `min by device` folds btrfs subvolumes into one.
         - record: device:node_filesystem_avail:ratio
           expr: >-
             min by (instance, device, job) (
-              node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|overlay|squashfs|autofs|vfat|nsfs|devtmpfs|cifs|nfs.*|fuse.*",mountpoint!~"/System/Volumes/(Preboot|VM|Update|xarts|iSCPreboot|Hardware).*|/Library/Developer/.*|/run.*|/boot.*|/var/lib/kubelet.*|/snap.*|/tmp"}
-              /
-              node_filesystem_size_bytes{fstype!~"tmpfs|ramfs|overlay|squashfs|autofs|vfat|nsfs|devtmpfs|cifs|nfs.*|fuse.*",mountpoint!~"/System/Volumes/(Preboot|VM|Update|xarts|iSCPreboot|Hardware).*|/Library/Developer/.*|/run.*|/boot.*|/var/lib/kubelet.*|/snap.*|/tmp"}
+              (
+                node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|overlay|squashfs|autofs|vfat|nsfs|devtmpfs|cifs|nfs.*|fuse.*",mountpoint!~"/System/Volumes/(Preboot|VM|Update|xarts|iSCPreboot|Hardware).*|/Library/Developer/.*|/private/var/run/com.apple.security.cryptexd/.*|/run.*|/boot.*|/var/lib/kubelet.*|/snap.*|/tmp"}
+                /
+                node_filesystem_size_bytes{fstype!~"tmpfs|ramfs|overlay|squashfs|autofs|vfat|nsfs|devtmpfs|cifs|nfs.*|fuse.*",mountpoint!~"/System/Volumes/(Preboot|VM|Update|xarts|iSCPreboot|Hardware).*|/Library/Developer/.*|/private/var/run/com.apple.security.cryptexd/.*|/run.*|/boot.*|/var/lib/kubelet.*|/snap.*|/tmp"}
+              )
+              unless node_filesystem_readonly == 1
             )
         - record: device:node_filesystem_avail_predict4h:bytes
           expr: >-
             min by (instance, device, job) (
-              predict_linear(node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|overlay|squashfs|autofs|vfat|nsfs|devtmpfs|cifs|nfs.*|fuse.*",mountpoint!~"/System/Volumes/(Preboot|VM|Update|xarts|iSCPreboot|Hardware).*|/Library/Developer/.*|/run.*|/boot.*|/var/lib/kubelet.*|/snap.*|/tmp"}[2h], 4 * 3600)
+              predict_linear(node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|overlay|squashfs|autofs|vfat|nsfs|devtmpfs|cifs|nfs.*|fuse.*",mountpoint!~"/System/Volumes/(Preboot|VM|Update|xarts|iSCPreboot|Hardware).*|/Library/Developer/.*|/private/var/run/com.apple.security.cryptexd/.*|/run.*|/boot.*|/var/lib/kubelet.*|/snap.*|/tmp"}[2h], 4 * 3600)
             )
         - record: device:node_filesystem_files_free:ratio
           expr: >-
             min by (instance, device, job) (
-              node_filesystem_files_free{fstype!~"tmpfs|ramfs|overlay|squashfs|autofs|vfat|nsfs|devtmpfs|cifs|nfs.*|fuse.*",mountpoint!~"/System/Volumes/(Preboot|VM|Update|xarts|iSCPreboot|Hardware).*|/Library/Developer/.*|/run.*|/boot.*|/var/lib/kubelet.*|/snap.*|/tmp"}
-              /
-              node_filesystem_files{fstype!~"tmpfs|ramfs|overlay|squashfs|autofs|vfat|nsfs|devtmpfs|cifs|nfs.*|fuse.*",mountpoint!~"/System/Volumes/(Preboot|VM|Update|xarts|iSCPreboot|Hardware).*|/Library/Developer/.*|/run.*|/boot.*|/var/lib/kubelet.*|/snap.*|/tmp"}
+              (
+                node_filesystem_files_free{fstype!~"tmpfs|ramfs|overlay|squashfs|autofs|vfat|nsfs|devtmpfs|cifs|nfs.*|fuse.*",mountpoint!~"/System/Volumes/(Preboot|VM|Update|xarts|iSCPreboot|Hardware).*|/Library/Developer/.*|/private/var/run/com.apple.security.cryptexd/.*|/run.*|/boot.*|/var/lib/kubelet.*|/snap.*|/tmp"}
+                /
+                node_filesystem_files{fstype!~"tmpfs|ramfs|overlay|squashfs|autofs|vfat|nsfs|devtmpfs|cifs|nfs.*|fuse.*",mountpoint!~"/System/Volumes/(Preboot|VM|Update|xarts|iSCPreboot|Hardware).*|/Library/Developer/.*|/private/var/run/com.apple.security.cryptexd/.*|/run.*|/boot.*|/var/lib/kubelet.*|/snap.*|/tmp"}
+              )
+              unless node_filesystem_readonly == 1
             )
 
     - name: homelab-capacity.pv
@@ -96,14 +107,13 @@ spec:
         # unity-runners-online (zero online org-wide) cannot see. Only hosts that should
         # be up: owned ones (config.json rates, basis owned) and powered ones the governor
         # reads as running; a stopped standby host, or every powered host while the governor
-        # cannot read EC2, stays quiet. Not the opt-in windows pool (windows-media:windows,
-        # offline unless asked for). A 7-day replay to 2026-11-14: fires on windows-media-ci
+        # cannot read EC2, stays quiet. A 7-day replay to 2026-11-14: fires on windows-media-ci
         # (unity-pool-3 down 15h, 11-14) and cachyos-x8664-main (7.5h, 11-13); the roster lag
         # after a host leaves (under 1h) stays quiet.
         - alert: CiHostRunnersOffline
           expr: |
             (
-              max by (host, pool) (github_runner_pool_expected{pool!="windows"})
+              max by (host, pool) (github_runner_pool_expected)
               - max by (host, pool) (github_runner_pool_online)
             ) > 0
             and on (host)
@@ -118,16 +128,65 @@ spec:
             fleet: fix
           annotations:
             summary: "{{ $labels.host }} has had {{ $value }} {{ $labels.pool }} runner(s) offline for an hour: docs/runbooks/unity-ci-host.md#a-host-short-of-its-runners"
+        # A job waiting 30 minutes that no registered runner its repo may use carries every
+        # label of (the exporter's pool="unserved"): no slot will ever take it, so it waits
+        # until someone notices. ar-1872: dotfiles-private "shell tests" sat 13-14h on
+        # pool="other" with nothing saying why. Not a stuck jobless run (stuck="true").
+        - alert: CiJobUnserved
+          expr: max by (repo, workflow, job_name, labels) (github_actions_job_waiting{pool="unserved",stuck!="true"}) > 1800
+          labels:
+            severity: warning
+            category: capacity
+            fleet: fix
+          annotations:
+            summary: "{{ $labels.repo }} {{ $labels.job_name }} has waited {{ $value | humanizeDuration }} for labels {{ $labels.labels }} that no runner it may use carries: docs/runbooks/unity-ci-host.md#a-job-no-runner-serves"
+        # A light or heavy job on a whole Unity slot (<host>-unity-pool-N) of a host with light or
+        # heavy seats: a second path for a small job is back, so it takes a slot a Unity job
+        # needed (hc-693). The host comes from the runner name, since ci_runner_job carries none.
+        # ci_runner_job exists only while a runner is busy, so max_over_time bridges the gaps
+        # between short jobs; a seat counts once it registered (not state missing).
+        # A 24h look on 2026-11-19, before the seats reached every host: light or heavy took a
+        # whole slot on every pool host, windows-media-ci (light seats only) included.
+        - alert: CiSmallJobOnWholeSlot
+          expr: |
+            max by (host, runner, kind) (
+              label_replace(max_over_time(ci_runner_job{kind=~"light|heavy",runner=~".+-unity-pool-[0-9]+"}[10m]),
+                            "host", "$1", "runner", "(.+)-unity-pool-[0-9]+")
+            )
+            and on (host)
+            github_runner_state{name=~".+-unity-pool-[0-9]+-(light|heavy)-[0-9]+",state!="missing"}
+          for: 10m
+          labels:
+            severity: warning
+            category: capacity
+            fleet: fix
+          annotations:
+            summary: "{{ $labels.runner }} has kept taking {{ $labels.kind }} jobs on a whole Unity slot for 10 minutes, though {{ $labels.host }} has seats for small jobs: docs/runbooks/unity-ci-host.md#a-small-job-on-a-whole-slot"
         # A reclaim kills every job on the Spot host. More than 3 in a day means that type is
         # scarce: set its entry spot = false in platform infra/aws-ci-burst (2026-11-13 plan).
         - alert: CiSpotHostReclaimedOften
-          expr: increase(ci_governor_fallback_total{reason="reclaim",host=~"aws-spot-.*"}[24h]) > 3
+          # A Spot host is one the governor's rates price as spot-estimate (config.json rates), not a name.
+          expr: increase(ci_governor_fallback_total{reason="reclaim"}[24h]) > 3 and on (host) ci_governor_rate_usd_per_hour{basis="spot-estimate"}
           labels:
             severity: warning
             category: capacity
             fleet: fix
           annotations:
             summary: "{{ $labels.host }} was reclaimed by AWS more than 3 times in 24 h, each killing its jobs: set it on-demand in platform infra/aws-ci-burst variables.tf"
+        # EC2 pending or stopping clears inside one scrape: the 7 days to 2026-11-18 hold no
+        # starting or stopping sample at all. The command-center ci pools row leaves out any
+        # powered host not reported running (#1122), so a hung start or stop shows nowhere
+        # else, and a hung start keeps the governor from passing the queue to the next host.
+        # max by drops reason and the pod, so a governor restart does not reset the 15m.
+        - alert: CiHostPowerStuck
+          expr: max by (host, state) (ci_governor_power_state{state=~"starting|stopping"}) == 1
+          for: 15m
+          labels:
+            severity: critical
+            category: capacity
+            fleet: fix
+          annotations:
+            summary: "{{ $labels.host }} has been {{ $labels.state }} for 15 minutes: docs/runbooks/unity-ci-host.md#a-host-stuck-starting-or-stopping"
         # GitHub charges orgs/ and repos/ calls to separate 5000-an-hour buckets, and the
         # exporter, governor and boards all go blind when one hits 0. Warning, not a page:
         # it comes ahead of CiGovernorBlind, which only sees the outage after 30 minutes.

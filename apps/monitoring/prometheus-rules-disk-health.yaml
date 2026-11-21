@@ -23,7 +23,7 @@ spec:
           annotations:
             summary: "SMART says {{ $labels.device }} is failing"
             description: >-
-              {{ $labels.device }} on {{ $labels.instance }} failed its SMART health check.
+              {{ $labels.device }} on {{ $labels.host }} failed its SMART health check.
               Check that its data has a current copy, then plan a replacement. See
               docs/backup-runbook.md, "If a drive fails".
         - alert: DiskCriticalWarning
@@ -36,7 +36,7 @@ spec:
           annotations:
             summary: "NVMe critical warning on {{ $labels.device }}"
             description: >-
-              {{ $labels.device }} on {{ $labels.instance }} reports critical warning
+              {{ $labels.device }} on {{ $labels.host }} reports critical warning
               {{ $value }}. It covers spare capacity, temperature and media going read-only.
         - alert: DiskMediaErrors
           expr: smartctl_device_media_errors > 0
@@ -48,7 +48,7 @@ spec:
           annotations:
             summary: "{{ $value }} media errors on {{ $labels.device }}"
             description: >-
-              {{ $labels.device }} on {{ $labels.instance }} could not read or write some of
+              {{ $labels.device }} on {{ $labels.host }} could not read or write some of
               its media. Run a scrub to find which files are affected.
         # Rot, and the reason to scrub. The only thing that sees it on the 8TB too, which
         # has no SMART (ansible/roles/disk-health/README.md).
@@ -78,19 +78,68 @@ spec:
               {{ $labels.device }} on {{ $labels.instance }} had IO errors in the last hour.
               Check the kernel log for controller resets or a USB disconnect, and the
               drive's SMART data if it has any.
-        # Silence must not read as healthy. Only NVMe appears here: the USB drive never does.
-        - alert: SmartMetricsMissing
+        # Wear-out, months ahead. percentage_used is the vendor's estimate of rated life
+        # spent; it can pass 100 and the drive keeps working, but past it the vendor
+        # promises nothing. 80 leaves time to buy and swap one.
+        - alert: DiskWearHigh
+          expr: smartctl_device_percentage_used >= 80
+          for: 1h
+          labels:
+            severity: warning
+            fleet: none  # wear-out: the human buys the replacement
+            category: disk-health
+          annotations:
+            summary: "{{ $labels.device }} on {{ $labels.host }} has used {{ $value }}% of its rated life"
+            description: >-
+              {{ $labels.device }} on {{ $labels.host }} reports {{ $value }}% of its rated
+              write life used. Plan a replacement before it reaches 100.
+        # Spare blocks replace worn ones. The drive's own critical warning trips at the
+        # threshold (DiskCriticalWarning); this trips at twice it, while there is time.
+        - alert: DiskSpareLow
+          expr: smartctl_device_available_spare <= smartctl_device_available_spare_threshold * 2
+          for: 1h
+          labels:
+            severity: warning
+            fleet: none  # wear-out: the human buys the replacement
+            category: disk-health
+          annotations:
+            summary: "{{ $labels.device }} on {{ $labels.host }} is down to {{ $value }}% spare"
+            description: >-
+              {{ $labels.device }} on {{ $labels.host }} has {{ $value }}% spare blocks left,
+              within twice the drive's threshold. Its data needs a current copy and the drive
+              a replacement.
+        # Silence must not read as healthy: an exporter that stopped reports no failing
+        # drive. The USB drive never appears here, so it is not counted.
+        - alert: SmartExporterDown
           expr: |
-            count(smartctl_device_smart_status) < 2
-            or absent(smartctl_device_smart_status)
+            up{job="smartctl-exporter"} == 0
+            or absent(up{job="smartctl-exporter"})
           for: 30m
           labels:
             severity: warning
             fleet: fix
             category: disk-health
           annotations:
-            summary: "SMART metrics missing for an NVMe drive on asus-laptop"
+            summary: "No SMART metrics from {{ $labels.host }}"
             description: >-
-              smartctl-exporter should report both NVMe drives. A drive that has dropped off
-              the bus disappears here first. Otherwise check prometheus-smartctl-exporter on
-              the host.
+              Prometheus cannot scrape prometheus-smartctl-exporter on {{ $labels.host }}
+              ({{ $labels.instance }}). Check the unit there; ansible role disk-health
+              installs and starts it.
+        # A drive that drops off the bus disappears from the exporter before anything else
+        # notices. Compared with the most drives the host reported in the last week, so it
+        # clears a week after a drive is removed on purpose (or silence it).
+        - alert: SmartDriveMissing
+          expr: |
+            max_over_time(count by (host) (smartctl_device_smart_status)[7d:1h])
+            > count by (host) (smartctl_device_smart_status)
+          for: 30m
+          labels:
+            severity: warning
+            fleet: none  # a drive off the bus: the human reseats or replaces it
+            category: disk-health
+          annotations:
+            summary: "{{ $labels.host }} reports fewer drives than it did this week"
+            description: >-
+              smartctl-exporter on {{ $labels.host }} reported {{ $value }} drives at most
+              this week and fewer now. A drive dropped off the bus or stopped answering
+              SMART. Check `lsblk` and the kernel log there.

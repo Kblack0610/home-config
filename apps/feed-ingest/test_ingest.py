@@ -13,6 +13,7 @@ import pathlib
 import sys
 import tomllib
 import unittest
+import urllib.error
 import zipfile
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
@@ -241,6 +242,25 @@ class Parsers(unittest.TestCase):
         wl = ingest.Watchlist(config()["watchlist"])
         env.text = "Board shake-up"  # an organization alone is a watchlist match
         self.assertEqual(wl.match(env), ["NVDA"])
+
+    def test_gdelt_unread_batches_and_freshness(self):
+        batch = "http://h/gdeltv2/20261117{}.gkg.csv.zip".format
+        latest = batch("211500")
+        # after the cursor, oldest first: a batch listed but not served yet is retried, never skipped
+        self.assertEqual(ingest.gdelt_unread(latest, batch("204500")), [batch("210000"), batch("211500")])
+        self.assertEqual(ingest.gdelt_unread(latest, latest), [])
+        # no cursor, or one older than the window: the listed batch and the 7 before it
+        window = ingest.gdelt_unread(latest, None)
+        self.assertEqual((len(window), window[0], window[-1]), (8, batch("193000"), latest))
+        self.assertEqual(ingest.gdelt_unread(latest, batch("120000")), window)
+        with self.assertRaises(ValueError):
+            ingest.gdelt_batch_time("http://h/gdeltv2/lastupdate.txt")
+
+        now = dt.datetime(2026, 11, 17, 21, 20, tzinfo=dt.timezone.utc)
+        ingest.gdelt_check_fresh(batch("204500"), now)  # a lagging listed batch is not a failure
+        for stale in (None, batch("191500")):  # nothing read, or GDELT stalled for 2 hours
+            with self.assertRaises(LookupError):
+                ingest.gdelt_check_fresh(stale, now)
 
     def test_jetstream_keeps_post_creates_only(self):
         post = {"did": "did:plc:a", "time_us": 1, "kind": "commit", "commit": {

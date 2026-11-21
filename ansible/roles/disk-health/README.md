@@ -1,8 +1,12 @@
 # disk-health
 
-Runs a monthly `btrfs scrub` on each of `asus-laptop`'s three filesystems and keeps `prometheus-smartctl-exporter` running. Schedules and limits are in `defaults/main.yml`. Alerts are in `apps/monitoring/prometheus-rules-disk-health.yaml`.
+Installs and runs `prometheus-smartctl-exporter` (port 9633) on every bare-metal Linux host (`linux_bare_metal` plus `desktop_workstations`), and runs a monthly `btrfs scrub` on each of asus-laptop's three filesystems. Scrub schedules and limits are in `host_vars/asus-laptop/disk-health.yml`; a host with no `disk_health_scrubs` gets the exporter only. Prometheus scrapes the hosts listed in `apps/monitoring/external-smartctl-exporter.yaml`, so a host added to the play goes there too. Alerts are in `apps/monitoring/prometheus-rules-disk-health.yaml`, and the Grafana dashboard is "Disk Health (SMART)" (`nas-disk-health.json`).
 
-## What each signal covers
+Each drive reports wear (`percentage_used`), spare blocks, media errors, the NVMe critical warning, temperature, bytes read and written, power-on time and power cycles. Exporter 0.14 does not export unsafe shutdowns; `smartctl -a /dev/nvme0` shows them.
+
+Not covered: the Pis (SD cards have no SMART), the 8TB USB drive (below), mac-mini and the Windows machines (no exporter).
+
+## Asus-laptop: what each signal covers
 
 | Disk | SMART | btrfs error counters | Stale-backup alerts |
 |---|---|---|---|
@@ -16,8 +20,10 @@ The USB bridge rejected `-d sat`, `sat,12` and `sat,16`, and `-d scsi` reports n
 
 ```bash
 cd ansible
-ansible-playbook playbooks/site.yml --limit asus-laptop --tags disk-health --check --diff
-ansible-playbook playbooks/site.yml --limit asus-laptop --tags disk-health
+ansible-playbook playbooks/site.yml --limit 'linux_bare_metal' --tags disk-health --check --diff
+ansible-playbook playbooks/site.yml --limit 'linux_bare_metal' --tags disk-health
+# The workstation's sudo asks for a password:
+ansible-playbook playbooks/site.yml --limit cachyos-x8664-main --tags disk-health -K
 ```
 
 ## Check a scrub

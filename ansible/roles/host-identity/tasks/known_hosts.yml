@@ -1,0 +1,21 @@
+---
+# The known_hosts block comes from the inventory alone, so a machine that is off when the play
+# runs is still trusted, and a rebuilt one is trusted again once its new key is committed (the
+# check in main.yml prints the line). Keys are never scanned from the network. Also imported by
+# roles/fleet-worker, so the lease holder reaches every worker.
+- name: Read the DHCP reservations and the roster
+  ansible.builtin.set_fact:
+    host_identity_devices: "{{ (lookup('ansible.builtin.file', host_identity_devices_file) | from_yaml).devices }}"
+    host_identity_roster: "{{ groups | roster_hosts(host_identity_roster_groups) }}"
+
+- name: Trust every roster machine's and dial target's host key under each name it is dialed by
+  when: inventory_hostname in host_identity_roster
+  become: true
+  ansible.builtin.blockinfile:
+    path: "{{ host_identity_known_hosts_path }}"
+    create: true
+    owner: root
+    group: root
+    mode: "0644"
+    marker: "# {mark} roster host keys (home-config ansible/roles/host-identity)"
+    block: "{{ hostvars | roster_known_hosts(groups, host_identity_roster_groups + host_identity_dial_target_groups, host_identity_devices) | join('\n') }}"

@@ -1,0 +1,8 @@
+---
+galaxy_info:
+  role_name: forgejo_runner_linux
+  author: home-config
+  description: One Forgejo seat per lendable Unity slot, run only while ci-runner-governor lends it.
+  license: MIT
+  min_ansible_version: "2.14"
+dependencies: []

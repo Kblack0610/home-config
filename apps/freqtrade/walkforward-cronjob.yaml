@@ -104,7 +104,7 @@ spec:
                 - name: WF_WORKERS
                   value: "2"  # per shard, so 8 across the 4; matches the 2-CPU limit
                 - name: WF_MEMORY_GB
-                  value: "4"  # per shard; 2 workers peaked at 3.7Gi on razer (2026-11-11)
+                  value: "3"  # per shard; at 4 every shard peaked at 4.9 to 5.95Gi of the 6Gi limit and shard 1 was OOMKilled (2026-11-19, 11-20)
                 - name: WF_BUDGET_S  # starts no fold after this: the deadline less WF_TIMEOUT (10800) and 30 min for the post steps
                   value: "16200"
               resources:
@@ -113,7 +113,7 @@ spec:
                   memory: 6Gi  # equal to the limit, so the scheduler sees what it uses
                 limits:
                   cpu: "2"
-                  memory: 6Gi  # WF_MEMORY_GB of estimated fold memory plus the interpreter and, in the last shard, the post steps
+                  memory: 6Gi  # WF_MEMORY_GB of estimated fold memory, which real peaks pass by about 1.5x, plus the interpreter and, in the last shard, the post steps
               volumeMounts:
                 - {name: work, mountPath: /work}
           volumes:

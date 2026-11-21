@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
-"""Regenerate the Home Assistant Launcher dashboard + site status from ingresses.
+"""Regenerate the kblab.me front door + site status from ingresses.
 
 Walks every Ingress and Traefik IngressRoute under apps/, extracts the hostnames
 and namespace, and walks ansible/inventory.yml for bare-metal hosts. Emits THREE
 generated artifacts from that single source of truth:
 
-  1. apps/home-assistant/config/dashboards/launcher.yaml
-     A Lovelace `type: sections` view. Public domains get their own "Public"
-     section (sorted first); private *.kblab.me services keep the namespace->group
-     mapping. Every web tile is bound to a `binary_sensor.<slug>` status entity so
-     the tile colours by up/down. Bare-metal tiles stay status-less.
+  1. apps/front-door/index.html
+     The page https://kblab.me serves: every site grouped by category on the
+     web-kit shell (apps/front-door/kit.lock). Public domains get their own
+     "Public" group (first); private *.kblab.me services are grouped by
+     namespace (NAMESPACE_GROUP, which must name every namespace); the bare-metal
+     hosts come last. Live up/down is status.kblab.me, so the page has none.
 
   2. apps/home-assistant/config/packages/site_status.yaml
      One HA REST sensor that queries Prometheus `probe_success` once, exposing a
@@ -18,14 +19,15 @@ generated artifacts from that single source of truth:
   3. apps/monitoring/probe-sites.yaml (BEGIN/END_GENERATED_TARGETS region)
      The blackbox-exporter Probe target list (every https://<host>).
 
-Generating all three together guarantees the probe target `instance`, the HA
-sensor filter, and the tile's bound entity agree byte-for-byte.
+Generating all three together guarantees the page, the probe target `instance`
+and the HA sensor filter list the same hosts.
 
 Run after adding, renaming, or removing an Ingress/IngressRoute or inventory host.
 `--list-sites` writes nothing and prints the private sites as `name<TAB>group<TAB>url`,
 for desktop launchers (dotfiles kblab-menu) to read this same source.
-The output is committed to git; Flux reconciles, the sync-managed-config init
-container copies the HA files to the PVC on pod restart, and HA picks them up.
+The output is committed to git; Flux reconciles, the front-door pod rolls on the
+new ConfigMap, and HA's sync-managed-config init container copies the status
+package to the PVC on pod restart.
 
 Only apps listed in apps/kustomization.yaml are read: an ingress Flux never
 applies has no site behind it.
@@ -35,12 +37,17 @@ Opt out per Ingress/IngressRoute with:
       annotations:
         homepage.kblab.me/launcher: "false"
 
+A host with nothing to open in a browser (a webhook receiver, an S3 or control-plane
+API) carries `homepage.kblab.me/api: "true"`: the page lists it as plain text marked
+API, `--list-sites` leaves it out, and it is still probed and has a status sensor.
+
 Classification: a host ending in `.kblab.me` (or the apex `kblab.me`) is private;
 everything else is treated as a public/internet domain. `www.` hosts are skipped
 as duplicates of their apex.
 """
 
 import glob
+import html
 import os
 import re
 import sys
@@ -48,15 +55,13 @@ import sys
 import yaml
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-LAUNCHER = os.path.join(REPO, "apps/home-assistant/config/dashboards/launcher.yaml")
+PAGE = os.path.join(REPO, "apps/front-door/index.html")
 STATUS_PKG = os.path.join(REPO, "apps/home-assistant/config/packages/site_status.yaml")
 PROBE = os.path.join(REPO, "apps/monitoring/probe-sites.yaml")
 INGRESS_GLOB = os.path.join(REPO, "apps/*/ingress*.yaml")
 APPS_KUSTOMIZATION = os.path.join(REPO, "apps/kustomization.yaml")
 INVENTORY = os.path.join(REPO, "ansible/inventory.yml")
 
-BEGIN_MARK = "# BEGIN_GENERATED_LAUNCHER"
-END_MARK = "# END_GENERATED_LAUNCHER"
 PROBE_BEGIN = "# BEGIN_GENERATED_TARGETS"
 PROBE_END = "# END_GENERATED_TARGETS"
 PROBE_INDENT = " " * 6
@@ -69,79 +74,59 @@ PUBLIC_GROUP = "Public"
 # Host(`example.com`) inside a Traefik IngressRoute route match string.
 HOST_RE = re.compile(r"Host\(`([^`]+)`\)")
 
-# Namespace -> launcher group (private services only). Add as new namespaces land.
+# Namespace -> group (private services only). Every namespace with a private
+# host must be here: an unmapped one stops the generator, so nothing lands
+# uncategorized.
 NAMESPACE_GROUP = {
     "actual-budget": "Finance",
+    "agents": "Ops",
     "ai-gateway": "AI",
     "apps": "Apps",
     "binks-api": "AI",
     "comfyui": "AI",
     "forgejo": "Dev",
+    "frigate": "Home",
     "freqtrade": "Finance",
     "gatus": "Ops",
+    "gatus-fleet": "Ops",
     "headscale": "Ops",
+    "headwind-mdm": "Home",
     "home-assistant": "Home",
     "immich": "Media",
     "jellyfin": "Media",
     "karakeep": "Apps",
     "litellm": "AI",
+    "memory": "Agents",
+    "minio": "Ops",
     "monitoring": "Ops",
     "mqtt2prom": "Ops",
     "music-assistant": "Media",
     "neptune": "Printing",
+    "notes-sync-bridge": "Apps",
+    "ntfy": "Ops",
     "orcaslicer": "Printing",
+    "placemyparents-preview": "Dev",
+    "scratch": "Apps",
     "semaphore": "Ops",
     "snapcast": "Media",
+    "vaultwarden": "Apps",
 }
 
-# Host subdomain -> icon. Fallback is mdi:web (public) or mdi:application (private).
-HOST_ICON = {
-    "actual-budget": "mdi:cash-multiple",
-    "alertmanager": "mdi:bell-alert",
-    "binks": "mdi:chat",
-    "blacknbrownstudios": "mdi:palette",
-    "comfyui": "mdi:image-multiple",
-    "finance": "mdi:cash-multiple",
-    "finance-tools": "mdi:cash-multiple",
-    "forgejo": "mdi:git",
-    "gatus": "mdi:heart-pulse",
-    "git": "mdi:git",
-    "grafana": "mdi:chart-bar",
-    "hass": "mdi:home-assistant",
-    "headscale": "mdi:vpn",
-    "headscale-ui": "mdi:vpn",
-    "homepage": "mdi:view-dashboard",
-    "immich": "mdi:image",
-    "jellyfin": "mdi:jellyfin",
-    "karakeep": "mdi:bookmark-multiple",
-    "kblack": "mdi:code-tags",
-    "kennethblack": "mdi:account-box",
-    "llm": "mdi:robot",
-    "music": "mdi:music",
-    "neptune": "mdi:printer-3d",
-    "photos": "mdi:image",
-    "placemyparents": "mdi:account-group",
-    "placemyparents-api": "mdi:api",
-    "prometheus": "mdi:chart-line",
-    "slicer": "mdi:printer-3d-nozzle",
-    "snapcast": "mdi:speaker-multiple",
-    "status": "mdi:heart-pulse",
-    "trader": "mdi:chart-line-variant",
-}
+BARE_METAL_GROUP = "Bare metal"
 
-# Inventory-host -> { label, url, icon }. URL points at the admin UI or
-# node_exporter metrics. Macs and Pis are metrics-only today.
+# Inventory host -> (label, url). The URL is the admin UI or node_exporter
+# metrics. Macs and Pis are metrics-only today.
 INVENTORY_TILES = {
-    "hp-victus":   ("HP Victus",   "http://192.168.1.243:9100/metrics", "mdi:server"),
-    "asus-laptop": ("Asus Laptop", "http://192.168.1.152:9100/metrics", "mdi:laptop"),
-    "mac-mini":    ("Mac Mini",    "http://192.168.1.7:9100/metrics",   "mdi:apple"),
-    "pi5-master":  ("Pi5 Master",  "http://192.168.1.20:9100/metrics",  "mdi:raspberry-pi"),
-    "pi5-worker1": ("Pi5 Worker1", "http://192.168.1.21:9100/metrics",  "mdi:raspberry-pi"),
-    "pi5-worker2": ("Pi5 Worker2", "http://192.168.1.22:9100/metrics",  "mdi:raspberry-pi"),
-    "pi5-worker3": ("Pi5 Worker3", "http://192.168.1.23:9100/metrics",  "mdi:raspberry-pi"),
-    "pi4-worker4": ("Pi4 Worker4", "http://192.168.1.24:9100/metrics",  "mdi:raspberry-pi"),
-    "pi4-worker5": ("Pi4 Worker5", "http://192.168.1.124:9100/metrics", "mdi:raspberry-pi"),
-    "openwrt-router": ("OpenWrt",  "http://192.168.1.1/",               "mdi:router-wireless"),
+    "hp-victus":   ("HP Victus",   "http://192.168.1.243:9100/metrics"),
+    "asus-laptop": ("Asus Laptop", "http://192.168.1.152:9100/metrics"),
+    "mac-mini":    ("Mac Mini",    "http://192.168.1.7:9100/metrics"),
+    "pi5-master":  ("Pi5 Master",  "http://192.168.1.20:9100/metrics"),
+    "pi5-worker1": ("Pi5 Worker1", "http://192.168.1.21:9100/metrics"),
+    "pi5-worker2": ("Pi5 Worker2", "http://192.168.1.22:9100/metrics"),
+    "pi5-worker3": ("Pi5 Worker3", "http://192.168.1.23:9100/metrics"),
+    "pi4-worker4": ("Pi4 Worker4", "http://192.168.1.24:9100/metrics"),
+    "pi4-worker5": ("Pi4 Worker5", "http://192.168.1.124:9100/metrics"),
+    "openwrt-router": ("OpenWrt",  "http://192.168.1.1/"),
 }
 
 
@@ -165,7 +150,7 @@ def flux_apps() -> set[str]:
 
 
 def iter_ingress_hosts():
-    """Yield (host, namespace) from Ingress + IngressRoute, honoring the opt-out."""
+    """Yield (host, namespace, api) from Ingress + IngressRoute, honoring the opt-out."""
     deployed = flux_apps()
     for path in sorted(glob.glob(INGRESS_GLOB)):
         if os.path.basename(os.path.dirname(path)) not in deployed:
@@ -180,107 +165,154 @@ def iter_ingress_hosts():
                 if annotations.get("homepage.kblab.me/launcher") == "false":
                     continue
                 namespace = meta.get("namespace") or ""
+                api = annotations.get("homepage.kblab.me/api") == "true"
                 spec = doc.get("spec") or {}
                 if kind == "Ingress":
                     for rule in spec.get("rules") or []:
                         host = rule.get("host")
                         if host:
-                            yield host, namespace
+                            yield host, namespace, api
                 elif kind == "IngressRoute":
                     for route in spec.get("routes") or []:
                         for host in HOST_RE.findall(route.get("match") or ""):
-                            yield host, namespace
+                            yield host, namespace, api
 
 
 def extract_tiles() -> list[dict]:
-    """Return [{host, group, icon, public, slug, url, display, sensor}, ...]."""
+    """Return [{host, group, public, api, slug, url, display}, ...]."""
     tiles: dict[str, dict] = {}
-    for host, namespace in iter_ingress_hosts():
+    for host, namespace, api in iter_ingress_hosts():
         if host in tiles or host.startswith("www."):
             continue
         public = not is_private(host)
-        group = PUBLIC_GROUP if public else NAMESPACE_GROUP.get(namespace, "Other")
-        subdomain = host.split(".", 1)[0]
-        icon = HOST_ICON.get(subdomain, "mdi:web" if public else "mdi:application")
+        if not public and namespace not in NAMESPACE_GROUP:
+            raise SystemExit(
+                f"ERROR: {host} is in namespace {namespace!r}, which NAMESPACE_GROUP"
+                " does not name; add it to a group"
+            )
         tiles[host] = {
             "host": host,
-            "group": group,
-            "icon": icon,
+            "group": PUBLIC_GROUP if public else NAMESPACE_GROUP[namespace],
             "public": public,
+            "api": api,
             "slug": slugify(host),
             "url": f"https://{host}",
             "display": host if public else pretty_name(host),
-            "sensor": f"binary_sensor.{slugify(host)}",
         }
     return sorted(tiles.values(), key=lambda t: (t["group"], t["host"]))
 
 
-def render_tiles_by_group(tiles: list[dict]) -> list[str]:
-    """Render one Lovelace section per group; Public first, then alphabetical."""
-    lines: list[str] = []
-    groups: dict[str, list[dict]] = {}
-    for tile in tiles:
-        groups.setdefault(tile["group"], []).append(tile)
-
-    order = ([PUBLIC_GROUP] if PUBLIC_GROUP in groups else []) + sorted(
-        g for g in groups if g != PUBLIC_GROUP
-    )
-    for group in order:
-        lines += [
-            "  - type: grid",
-            "    cards:",
-            "      - type: heading",
-            f"        heading: {group}",
-            f"        icon: {group_icon(group)}",
-        ]
-        for tile in sorted(groups[group], key=lambda t: t["host"]):
-            lines += [
-                "      - type: tile",
-                f"        entity: {tile['sensor']}",
-                f"        name: {tile['display']}",
-                f"        icon: {tile['icon']}",
-                "        tap_action:",
-                "          action: url",
-                f"          url_path: {tile['url']}",
-            ]
-    return lines
-
-
-def render_inventory_section() -> list[str]:
-    """Render the bare-metal hosts section from ansible/inventory.yml."""
+def inventory_tiles() -> list[dict]:
+    """The bare-metal hosts in ansible/inventory.yml that INVENTORY_TILES names."""
     with open(INVENTORY) as fp:
         inv = yaml.safe_load(fp)
-
     present: list[str] = []
     children = (inv.get("all") or {}).get("children") or {}
     for group in children.values():
         for hostname in (group.get("hosts") or {}).keys():
             if hostname in INVENTORY_TILES and hostname not in present:
                 present.append(hostname)
-
-    if not present:
-        return []
-
-    lines = [
-        "  - type: grid",
-        "    cards:",
-        "      - type: heading",
-        "        heading: Bare Metal",
-        "        icon: mdi:server-network",
+    return [
+        {"display": INVENTORY_TILES[h][0], "url": INVENTORY_TILES[h][1],
+         "host": INVENTORY_TILES[h][1].split("//", 1)[1].rstrip("/")}
+        for h in sorted(present)
     ]
-    for hostname in sorted(present):
-        label, url, icon = INVENTORY_TILES[hostname]
-        lines += [
-            "      - type: tile",
-            "        entity: sun.sun",
-            f"        name: {label}",
-            f"        icon: {icon}",
-            "        tap_action:",
-            "          action: url",
-            f"          url_path: {url}",
-            "        hide_state: true",
-        ]
-    return lines
+
+
+def grouped(tiles: list[dict]) -> list[tuple[str, list[dict]]]:
+    """(group, tiles) in page order: Public, the rest alphabetical, bare metal last."""
+    groups: dict[str, list[dict]] = {}
+    for tile in tiles:
+        groups.setdefault(tile["group"], []).append(tile)
+    order = ([PUBLIC_GROUP] if PUBLIC_GROUP in groups else []) + sorted(
+        g for g in groups if g != PUBLIC_GROUP
+    )
+    out = [(g, sorted(groups[g], key=lambda t: t["host"])) for g in order]
+    metal = inventory_tiles()
+    if metal:
+        out.append((BARE_METAL_GROUP, metal))
+    return out
+
+
+def anchor(group: str) -> str:
+    return slugify(group).replace("_", "-")
+
+
+def render_page(tiles: list[dict]) -> str:
+    """The front door: web-kit's <kb-shell> with one sidebar link per group, and
+    one list per group: each name a link over its host (none when they match);
+    an API's name is plain text marked API, since there is nothing to open."""
+    sections = grouped(tiles)
+    nav = "\n".join(
+        f'    <a href="#{anchor(g)}">{esc(g)}</a>' for g, _ in sections
+    )
+    body = []
+    for group, rows in sections:
+        body.append(
+            f'  <section id="{anchor(group)}">\n'
+            f'    <h2>{esc(group)} <span class="n">{len(rows)}</span></h2>\n'
+            "    <ul>"
+        )
+        for t in rows:
+            host = "" if t["host"] == t["display"] else f"<span>{esc(t['host'])}</span>"
+            if t.get("api"):
+                name = f'<div>{esc(t["display"])} <small>API</small></div>'
+            else:
+                name = f'<a href="{esc(t["url"])}">{esc(t["display"])}</a>'
+            body.append(f"      <li>{name}{host}</li>")
+        body.append("    </ul>\n  </section>")
+    return PAGE_TEMPLATE.format(
+        count=sum(len(r) for _, r in sections), nav=nav, body="\n".join(body)
+    )
+
+
+def esc(text: str) -> str:
+    return html.escape(text, quote=True)
+
+
+# Only what web-kit lacks: the list rows. Colour, type and the shell come from
+# the kit (tokens.css, shell.css); spacing is on the 4px grid (ui.md rule 10).
+PAGE_TEMPLATE = """<!doctype html>
+<!-- Generated by scripts/gen-ha-launcher.py; do not edit by hand. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>kblab</title>
+<link rel="stylesheet" href="/kit/tokens.css">
+<link rel="stylesheet" href="/kit/shell.css">
+<script type="module" src="/kit/kb-shell.js"></script>
+<style>
+  .kb-main {{ padding: 16px 24px 48px; }}
+  .head {{ display: flex; align-items: baseline; justify-content: space-between; }}
+  h1 {{ font-size: var(--fs-lg); margin: 0; }}
+  h2 {{ font-size: var(--fs-md); font-weight: 600; margin: 24px 0 4px; }}
+  .n {{ color: var(--muted); font-weight: 400; }}
+  section {{ scroll-margin-top: calc(var(--head) + 8px); }}
+  ul {{ list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); column-gap: 24px; }}
+  li {{ padding: 6px 0; border-bottom: 1px solid var(--line); min-width: 0; }}
+  li > * {{ display: block; overflow-wrap: anywhere; }}
+  li span {{ font-family: var(--mono); font-size: var(--fs-sm); color: var(--muted); }}
+  small {{ font-size: var(--fs-sm); color: var(--muted); }}
+  a {{ color: var(--accent); text-decoration: none; }}
+  a:hover {{ text-decoration: underline; }}
+</style>
+</head>
+<body>
+<kb-shell>
+  <a class="kb-brand" href="/">kblab</a>
+  <nav class="kb-nav" aria-label="Groups">
+    <div class="kb-group">Systems</div>
+{nav}
+  </nav>
+</kb-shell>
+<main class="kb-main">
+  <div class="head"><h1>Systems <span class="n">{count}</span></h1><a href="https://status.kblab.me">Status</a></div>
+{body}
+</main>
+</body>
+</html>
+"""
 
 
 def render_status_package(tiles: list[dict]) -> str:
@@ -332,40 +364,6 @@ def pretty_name(host: str) -> str:
     return " ".join(part.capitalize() for part in sub.replace("_", "-").split("-"))
 
 
-def group_icon(group: str) -> str:
-    return {
-        "AI": "mdi:robot",
-        "Apps": "mdi:apps",
-        "Dev": "mdi:code-braces",
-        "Finance": "mdi:cash",
-        "Home": "mdi:home",
-        "Media": "mdi:multimedia",
-        "Ops": "mdi:tools",
-        "Other": "mdi:application",
-        "Printing": "mdi:printer-3d",
-        "Public": "mdi:earth",
-    }.get(group, "mdi:application")
-
-
-def render_launcher(tiles: list[dict]) -> str:
-    block = [
-        BEGIN_MARK + " (regenerate via scripts/gen-ha-launcher.py)",
-        *render_tiles_by_group(tiles),
-        *render_inventory_section(),
-        END_MARK,
-    ]
-    return HEADER + "\n".join(block) + "\n"
-
-
-HEADER = """title: Launcher
-path: launcher
-icon: mdi:rocket-launch
-type: sections
-max_columns: 4
-sections:
-"""
-
-
 def write_if_changed(path: str, content: str) -> bool:
     if os.path.exists(path):
         with open(path) as fp:
@@ -400,15 +398,15 @@ def main() -> int:
     tiles = extract_tiles()
     if "--list-sites" in sys.argv[1:]:
         for tile in tiles:
-            if not tile["public"]:
+            if not tile["public"] and not tile["api"]:
                 print(f'{tile["display"]}\t{tile["group"]}\t{tile["url"]}')
         return 0
 
     site_tiles = tiles  # all ingress hosts get HTTP status
 
     changed = []
-    if write_if_changed(LAUNCHER, render_launcher(tiles)):
-        changed.append(LAUNCHER)
+    if write_if_changed(PAGE, render_page(tiles)):
+        changed.append(PAGE)
     if write_if_changed(STATUS_PKG, render_status_package(site_tiles)):
         changed.append(STATUS_PKG)
     if update_probe_targets(site_tiles):

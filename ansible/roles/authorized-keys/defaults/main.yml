@@ -13,7 +13,6 @@ authorized_keys_list:
     key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIM6yTlK3GCzXC2+njcPtTucjwxb53Sb0+JT+TuTD78Jh kblack0610@gmail.com
   - comment: the nightly convergence check (apps/ansible-runner)
     key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAm2iORKcEev3hnxx5sXtYvA4wcO2Xp+dnarHP7/4db1 ansible-runner@home-k3s
-  # The human's client since 2026-11-15; it forwards queue and ask writes to
-  # the fleet home over ssh.
+  # The human's client since 2026-11-15.
   - comment: the laptop (cachyos-rog)
     key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEa1tNutFNZHbM0r/0t6MS+iViigfyLK/p0Nulh+R0Wn kblack0610@gmail.com

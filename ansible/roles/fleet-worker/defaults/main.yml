@@ -1,7 +1,13 @@
 ---
 # What a session on a fleet worker runs: tmux and wt (from the dotfiles), the
-# three harnesses, gh for its PRs, python-yaml and jq for fleet-hosts.sh, and
-# rust and gcc to build agent-panel.
+# harnesses (claude and opencode; codex runs on the workstation only), gh for
+# its PRs, python-yaml and jq for fleet-hosts.sh, bubblewrap, socat and npm for
+# srt, the lane sandbox a headless harness runs in (tasks/harnesses.yml installs
+# srt itself), and
+# rust and gcc to build agent-panel, and mosquitto for agent-mqtt-publish, a
+# singleton lane that runs on whichever peer holds the fleet lease. pnpm and uv
+# build the standard repos (inventory fleet_workers fleet_repos): personal-sites
+# is a pnpm workspace, and trader's checks install their pins with uv.
 fleet_worker_packages:
   - git
   - tmux
@@ -11,10 +17,16 @@ fleet_worker_packages:
   - github-cli
   - rust
   - gcc
-  - openai-codex
   - opencode
+  - bubblewrap
+  - socat
+  - nodejs
+  - npm
+  - mosquitto
+  - pnpm
+  - uv
 # Ubuntu, the cloud worker (platform infra/aws-ci-burst, fleet-worker-1). It takes
-# light claude items only, so it skips codex and opencode, which apt does not carry.
+# light claude items only, so it skips opencode, which apt does not carry.
 fleet_worker_packages_apt:
   - curl
   - git
@@ -23,19 +35,28 @@ fleet_worker_packages_apt:
   - jq
   - python3-yaml
   - gh
-# A cloud worker joins the tailnet to reach the state host and be reached by
+# A cloud worker joins the tailnet to reach the store and be reached by
 # fleet-dispatch, with the auth key from SOPS (role tailscale-node).
 fleet_tailscale: false
 fleet_worker_dotfiles_repo: https://github.com/Kblack0610/.dotfiles.git
-# The fleet home is the worker fleet_state_host names (inventory.yml). It also
-# holds the agent store and serves agent-web: tasks/home.yml.
-fleet_worker_is_home: "{{ inventory_hostname == fleet_state_host.split('.')[0] }}"
-# forge-primary is the live Forgejo; its ssh is on 2222 (apps/forgejo/README.md).
-fleet_home_store_repo: ssh://git@{{ fleet_home_store_host }}:{{ fleet_home_store_port }}/kblack0610/.agent.git
-fleet_home_store_host: forge-primary.kblab.me
-fleet_home_store_port: 2222
-# The kubeconfig schedules-sync reads the exporter feed with on the home
-# (tasks/home.yml): the scoped account's token and the cluster CA from
+# Where fleet-hosts.sh reads the roster from (tasks/main.yml). The same remote and URL
+# as the workstation's checkout; git.kennethblack.me does not serve it until #967 cuts over.
+fleet_worker_forgejo_url: https://git.kblab.me
+fleet_worker_roster_repo: "{{ fleet_worker_forgejo_url }}/kblack0610/home-config.git"
+# The Forgejo bot a session on a worker pushes and opens home-config PRs as (tasks/main.yml):
+# write on kblack0610/home-config only, read on the feed's private Forgejo repos; its token is
+# vault_fleet_forgejo_token. docs/runbooks/fleet-worker.md, "Forgejo bot token".
+fleet_worker_forgejo_user: fleet-worker
+# The host every worker trusts for the store (tasks/store.yml): forge-primary is the
+# live Forgejo, its ssh on 2222 (apps/forgejo/README.md), the host of store.env's
+# STORE_PRIMARY_URL. A store.env that names another host fails the reach check on
+# its host key, loudly.
+fleet_store_host: forge-primary.kblab.me
+fleet_store_port: 2222
+# Forgejo's /data/ssh ed25519 host public key (apps/forgejo): rotate it here when the pod's key does.
+fleet_store_host_key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIHxSGZIZ3Eu5n4h+J9mB0wCBBTjqZMTJCAzvGXnKwHx
+# The kubeconfig schedules-sync and agent-web-record use on every worker
+# (tasks/peer.yml): the scoped account's token and the cluster CA from
 # group_vars/fleet_workers/vault.sops.yaml, the server from group_vars/all/k3s.yml.
 fleet_home_feed_kubeconfig:
   apiVersion: v1
@@ -56,3 +77,7 @@ fleet_home_feed_kubeconfig:
         user: schedules-sync
         namespace: monitoring
   current-context: home-k3s-feed
+# Whether this peer may hold the fleet lease and so run the singleton lanes and agent-web
+# (tasks/peer.yml writes the no-lease marker when false). A non-Arch one builds no
+# agent-web, so it does not hold it by default.
+fleet_lease: "{{ ansible_facts.os_family == 'Archlinux' }}"

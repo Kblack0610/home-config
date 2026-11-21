@@ -23,6 +23,19 @@ all:
     # Default SSH user on Linux hosts provisioned via PXE (matches the
     # workstation account that PXE kickstart seeds with the key).
     ansible_user: kblack0610
+    # The CI runner label vocabulary, one home: scripts/render-ci-topology.py copies it into
+    # apps/ci-topology/topology.json ("labels"), which ci-runner-governor and
+    # github-runner-exporter read; site.yml's runner plays read it here. pool, build and wide
+    # are also topology cap names, so they stay unity, unity-build and unity-wide.
+    ci_labels:
+      pool: unity
+      full: unity-full
+      build: unity-build
+      wide: unity-wide
+      withheld: unity-withheld
+      build_withheld: unity-build-withheld
+      seat_withheld: light-withheld
+      lent: unity-lent
 
   children:
     # Provisional tiers for placement records; P2 qualification and P5 review
@@ -35,6 +48,7 @@ all:
         hp-victus:
           host_tier: probation
           ansible_host: 192.168.1.243
+          ssh_host_ed25519: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMSSeokhtpnD8t9LhxxPnQDsF6q0qE1rHNI37kYPGZX5
         # asus-laptop listens on 2222, not 22 (that part of the 2026-04-01 note
         # still holds). The `unreachable: true` flag was removed 2026-08-12:
         # it was stale, and it was load-bearing in the wrong direction. The host
@@ -47,7 +61,8 @@ all:
           host_tier: core
           ansible_host: 192.168.1.152
           ansible_port: 2222
-        # Razer Blade 14 (Ryzen 9 8945HS, 96 GB), reinstalled headless by PXE
+          ssh_host_ed25519: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICsWV1oEbjGp4NMxRE6W4wamxt8KJ3PIIuXaUO/1qsXS
+        # Razer Blade 14 (Ryzen 9 8945HS, 32 GB since 2026-11-17, 96 GB before), reinstalled headless by PXE
         # kexec 2026-10-24 as a CI host, and a k3s agent since 2026-10-26. On the LAN through
         # a USB-C ethernet dongle; the DHCP reservation follows that dongle's MAC.
         razer-laptop:
@@ -66,17 +81,40 @@ all:
         ms-a2:
           host_tier: standard
           ansible_host: 192.168.1.28
+          ssh_host_ed25519: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOc31JGsIsPvZ6UCygW2zQjb8t+KDKk8ZXjBlt+z7WrF
+          # The uncabled Realtek port: NetworkManager setting it up logged "Link is Down"
+          # every boot, a false HostNicDown (roles/nic-unused-down).
+          nic_unused_interfaces: [enp3s0]
           k3s_role: agent
           k3s_extra_args:
             - --node-label=node.kubernetes.io/friendly-name=ms-a2
-        # ASRock DeskSlim X600, Ryzen 9 9900X (12 cores), 60G. Its twin deskslim-1
-        # (7900X, DHCP .19) joins once its replacement RAM is in.
+        # ASRock DeskSlim X600, Ryzen 9 9900X (12 cores), 60G.
         deskslim-2:
           host_tier: standard
           ansible_host: 192.168.1.29
+          ssh_host_ed25519: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHGA5wGSM5aQxkAdI33S+gPcftmo3mn7/oj9OWmPR/sv
           k3s_role: agent
           k3s_extra_args:
             - --node-label=node.kubernetes.io/friendly-name=deskslim-2
+        # Its twin: ASRock DeskSlim X600, Ryzen 9 7900X (12 cores), 61G. PXE 2026-11-16,
+        # off with bad RAM until the replacement kit, joined 2026-11-18.
+        deskslim-1:
+          host_tier: standard
+          ansible_host: 192.168.1.19
+          ssh_host_ed25519: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILqCoF90nG/OlyHlKtYispdhQrgVzuToqTM369Ub9jTe
+          k3s_role: agent
+          k3s_extra_args:
+            - --node-label=node.kubernetes.io/friendly-name=deskslim-1
+        # The living-room PC that was windows-media: ASUS TUF GAMING B550-PLUS WIFI II,
+        # Ryzen 9 5900XT (16 cores), 62G, one Crucial P3 1 TB. Windows wiped, PXE 2026-11-20
+        # and joined that day. Its Wi-Fi (wlp5s0, rtw89) is down and logs no link line.
+        tuf-b550:
+          host_tier: standard
+          ansible_host: 192.168.1.8
+          ssh_host_ed25519: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFJArKnl3fz8g0t+wpotLpfsfhzMDAgXffQL0vUO53Fe
+          k3s_role: agent
+          k3s_extra_args:
+            - --node-label=node.kubernetes.io/friendly-name=tuf-b550
 
     # This workstation, managed over a local connection (no SSH). Hosts the
     # gungan dictation ASR daemons (see roles/asr-servers).
@@ -85,7 +123,17 @@ all:
         cachyos-x8664-main:
           host_tier: standard
           ansible_connection: local
+          # Its DHCP name, which is not its hostname: roles/host-identity trusts its key under it
+          # and finds its NIC reservation by it.
+          fleet_ssh_host: pc-home-cachy-main.lan
+          # /etc/ssh/ssh_host_ed25519_key.pub, which every roster machine trusts (roles/host-identity).
+          ssh_host_ed25519: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGaTLqfJOaCga5UzV+WsuxyRSRPcUY5GMUFloCREQ9aE
           ansible_python_interpreter: /usr/bin/python3
+          # Agent work (every tmux pane, agentctl lane and fleet timer, roles/agent-host-budget):
+          # 28 of 32 CPUs, CI's 8-13,24-29 inside it. CPUs 0-1,16-17 (V-cache cores 0 and 1
+          # with their SMT siblings) stay with the desktop and the OS. 87.5%, the human's
+          # 85-90% (2026-11-18), after 64 minutes over 90% busy that afternoon.
+          agent_cpus: 2-15,18-31
 
     macos_hosts:
       hosts:
@@ -94,9 +142,17 @@ all:
           ansible_host: 192.168.1.7
           ansible_user: kennethblack
           ssh_aliases: [m1]
+          # /etc/ssh/ssh_host_ed25519_key.pub: roster machines trust it under every name it is dialed by
+          # (host_identity_dial_target_groups, roles/host-identity).
+          ssh_host_ed25519: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBSevnCCl7D8zA29C912Sa2isbGS9eTzhotSXl1TgUlh
           # The store-console skill drives this Chrome over ssh with the
           # Playwright Extension; the person signs in to the store consoles here.
           brew_extra_casks: [google-chrome]
+          # Its two runners, for the CI topology (scripts/render-ci-topology.py): mac-mini-mac is
+          # the "macOS CI runner" play's, m1-playground-mac has no play (docs/mac-machines.md).
+          ci_pinned_runners:
+            - {name: mac-mini-mac, cap: macos, repo: BlackNBrownStudios/platform}
+            - {name: m1-playground-mac, cap: macos, repo: BlackNBrownStudios/unity-core-playground}
 
     # Windows PCs, managed over Windows OpenSSH (see docs/windows-machines.md
     # for the one-time paste that enables sshd and trusts the workstation key).
@@ -107,19 +163,8 @@ all:
       vars:
         ansible_connection: ssh
         ansible_shell_type: powershell
-      hosts:
-        # The living-room Windows and media box (Win10 Pro, Wi-Fi only), and
-        # the infra Windows test host: agents drive it over SSH, and it is an
-        # opt-in org runner for Windows-only issues, the way mac-mini is for
-        # macOS. Not a CI gate. Was living-room-pc (.121) until 2026-10-26.
-        windows-media:
-          host_tier: standard
-          ansible_host: 192.168.1.8   # windows-media-lan
-          ansible_user: hughl
-          windows_hostname: WINDOWS-MEDIA
-          # Agents need a signed-in desktop; this brings it back after a reboot
-          # or power cut with no one at the TV.
-          windows_baseline_autologon: true
+      # No Windows PC since 2026-11-20: windows-media became the Linux CI host tuf-b550.
+      hosts: {}
 
     # Nodes whose tier labels Ansible owns. IP matching resolves Pi aliases
     # to their actual Kubernetes names; this group does not install k3s.
@@ -223,6 +268,9 @@ all:
         # sp5100_tco autoloads on both (/dev/watchdog0, checked 2026-11-16).
         ms-a2:
         deskslim-2:
+        deskslim-1:
+        # sp5100_tco autoloads (/dev/watchdog0, checked 2026-11-20).
+        tuf-b550:
         asus-laptop:
           # Present but not autoloaded on this board (checked 2026-11-13).
           hw_watchdog_module: sp5100_tco
@@ -243,6 +291,8 @@ all:
         razer-laptop:
         ms-a2:
         deskslim-2:
+        deskslim-1:
+        tuf-b550:
         asus-laptop:
 
     # NUT (Network UPS Tools) groups. The single CyberPower CP1500PFCLCDa plugs
@@ -268,111 +318,73 @@ all:
         pi3-adguard:
         ms-a2:
         deskslim-2:
+        deskslim-1:
+        # Outlet not checked (2026-11-20): docs/nut-ups.md.
+        tuf-b550:
         mac-mini:
-        # Local connection: apply with -K (sudo password).
+        # Local connection: sudo needs the become password (ansible/README.md, Secrets).
         cachyos-x8664-main:
 
-    # Self-hosted GitHub Actions runners for BlackNBrownStudios/platform
-    # (see the "Linux CI runners" play in site.yml).
-    # GitHub has no runner priority - an idle runner with matching labels takes
-    # the next job - so the slot counts ARE the priority. heavy jobs publish
-    # fixed host ports (postgres 5432, mailpit 1025/8025, app ports), so never
-    # more than one heavy slot per host. CPU/memory caps are in ci_hosts below.
-    # Slot counts are mirrored in apps/github-runner-exporter
-    # RUNNER_ROSTER; scripts/check-runner-roster.py fails CI when they disagree.
-    # Never a host in no_ci_hosts (below); the same script fails CI on one.
-    linux_ci_runners:
-      hosts:
-        # One of each from 2026-11-10, on cores of their own (ci_linux_cpus in
-        # ci_hosts). Three light and a heavy shared Unity's cores at a quarter of
-        # its weight and blew their caps (platform #1488, #1489). Two light since
-        # 2026-11-12 for the light bursts: the light runners have
-        # their own 6 threads (ci_linux_cpus 5-7,13-15) and 40G, and a light job
-        # is 0.5-0.6G anon. Heavy stays at one: it waited 6% of 7 days with
-        # bursts to 18, but heavy jobs publish fixed host ports.
-        # ci_repo_runners: runners for one personal repo, which cannot use the
-        # org's slots. GitHub bills hosted minutes on a private repo and refused
-        # every .dotfiles-private job from 2026-11-15 once the month's allowance
-        # ran out. Its jobs are lint and unit runs of seconds and under 1G, so
-        # one runner on each of two hosts, in the light slots' slice.
-        razer-laptop:
-          ci_light_slots: 2
-          ci_heavy_slots: 1
-          ci_repo_runners: [{repo: Kblack0610/.dotfiles-private, slot: dotfiles-private-1}]
-        # Four light slots, no heavy, on the cores of its third Unity slot since
-        # 2026-11-13 (unity_ci_runners says why). Light jobs average 0.4 cores and
-        # 0.6G, so four fit in three cores and 14G. Ubuntu: linux-ci-host's apt list.
-        windows-media-ci:
-          host_tier: standard
-          ci_light_slots: 4
-          ci_heavy_slots: 0
-          ci_repo_runners: [{repo: Kblack0610/.dotfiles-private, slot: dotfiles-private-1}]
-
-    # BNB Unity runner pool (added 2026-10-05; the "Unity CI runner pool" play in
-    # site.yml). Org-scoped, label `unity`, for every game repo. Each slot runs
-    # one Unity job at a time (a PlayMode shard, an EditMode run, a DodginBalls
-    # build), about 4-6 GB each. CPU/memory caps are in ci_hosts below. Every
-    # host here is one activation on the shared Unity serial.
-    # Mirrored in RUNNER_ROSTER like linux_ci_runners above.
-    #
-    # Never a host in no_ci_hosts (below).
+    # BNB CI runner pool (added 2026-10-05; the "CI runners" play in site.yml), org-scoped
+    # for every BlackNBrownStudios repo. Each slot runs one job at a time and takes every
+    # kind its host's ci_caps allow (scripts/render-ci-topology.py): a Unity job (a PlayMode
+    # shard, an EditMode run, a DodginBalls build, about 4-6 GB) or a light or heavy one. No
+    # slot belongs to one kind: a light job first runs ci-fresh-workspace, which parks a warm
+    # Unity tree's untracked state (roles/ci-host). CPU/memory caps are in ci_hosts below.
+    # Every host here is one activation on the shared Unity serial. The exporter and governor
+    # read these slots from apps/ci-topology/topology.json, which scripts/render-ci-topology.py
+    # renders from here; CI fails when it is stale. Never a host in no_ci_hosts (below).
     unity_ci_runners:
       hosts:
-        # One slot at first: the same 8 Unity threads as asus had. Its first pool shards
-        # (2026-10-24 PlayMode 4 green, 2026-10-26 PlayMode 3 one flaky timed
-        # test) match the other hosts, which each fail one different timed test
-        # per run.
-        # Takes full runs too (unity_ci_full defaults to true). It was reserved
-        # for merge gates 2026-10-26 to 10-27; since playground gates run on the
-        # pool with a narrow pick, the reservation only slowed the nightly.
-        # Several slots since 2026-10-28, each on cores of its own
-        # (ci_unity_slot_cpus in ci_hosts), so they cannot starve each other's
-        # real-time tests the way asus's two did. In the 24h before, razer
-        # averaged 31% CPU, peaked at 65C and used at most 31% of its memory,
-        # while about 30 Unity jobs waited on average. Two slots of three cores
-        # each the first evening, three of two cores each from 20:00 the same
-        # day with about 40 jobs queued. If razer's timed tests fail more often
-        # than the other hosts', go back to two.
-        # Five since 2026-10-29: slots 4 and 5 float over all of razer's Unity
-        # cores and only take work while ci-runner-governor admits them (it
-        # withholds a slot when CPU pressure or idle say the host is full). 37
-        # jobs queued with razer at 34% CPU and 76G free; the governor, not a
-        # fixed count, decides how many of the five run.
-        # Two since 2026-11-02, three cores each, as the rule above says: over
-        # 10-28 to 11-02 a razer PlayMode job failed 24% of the time against
-        # mac-studio's 7%, every FAIL of the 11-02 nightly ran on razer, and the
-        # classes were timed ones (GadgetMoves, WeightedStart, SkylineMoves).
-        # Failures did not grow with more razer jobs at once, so the two-core
-        # slot was the limit, not its neighbours.
-        # One since 2026-11-10: the second slot's three cores went to the
-        # platform runners (linux_ci_runners), which had none of their own.
-        # Slot 1 carries slim-tour, so playground slim-tour.yml always lands on the one
-        # slot whose prune keeps its trees warm (site.yml's .keep-warm-trees, ucp-2062).
-        # Picked by disk on 2026-11-14: razer 365G free of 938G (39%); windows-media-ci
-        # 80G of 290G (27%) and aws-burst-1 23% with no tree, both under the 35% floor.
-        razer-laptop:
-          unity_ci_slots: 1
-          unity_ci_slot_labels:
-            1: [slim-tour]
-          unity_ci_full: true
-          unity_ci_wide: true
-          unity_ci_gate: true
+        # razer-laptop has no Unity slot since 2026-11-17: its RAM dropped from 96 GB to
+        # 32 GB (the 96 GB kit went to the MS-A2) and it runs agents, never CI (no_ci_hosts, 2026-11-18).
+        # Slot 1 of ms-a2 carries slim-tour, so playground slim-tour.yml always lands on the
+        # one slot whose prune keeps its trees warm (site.yml's .keep-warm-trees, ucp-2062).
+        # Picked by disk on 2026-11-17: ms-a2 1.6T free of 1.8T (88%), unity-full, on the LAN
+        # (hd-library). It took the label from razer-laptop slot 1.
         # The 2026-11-10 purchases, joined 2026-11-16. Full runs and gates: owned
         # and never preempted. One slot fewer than the purchase plan on each, so
         # k3s keeps two cores of its own (ci_hosts below); ramp per
         # docs/runbooks/unity-ci-host.md. Not unity-wide until each passes the
         # ucp-1521 probes.
+        # Slot 5 of ms-a2 is a player-build slot (make-logical-possum phase 5, 2026-11-18) on
+        # test slots 3 and 4's cores, so it adds no load: the governor runs the build or those
+        # two tests, never both. Picked by heat: 68C max since the thermal cap (hc-553),
+        # deskslim-2 71C. It takes releases too (unity-release, 2026-11-18): any build slot
+        # with room takes any build.
         ms-a2:
-          unity_ci_slots: 4
+          unity_ci_slots: 5
+          unity_ci_slot_groups: {5: [3, 4]}
+          unity_ci_slot_labels:
+            1: [slim-tour]
+            5: [unity-release]
           unity_ci_full: true
           unity_ci_gate: true
+          # Every release host runs an Accelerator, as aws-build-1 does (playground ucp-2715).
+          unity_ci_accelerator: 172.17.0.1:10080
         deskslim-2:
           unity_ci_slots: 3
           unity_ci_full: true
           unity_ci_gate: true
+          # Runners for personal repos, which cannot use the org's slots and have no hosted
+          # minutes left: short lint, unit and Next.js build runs. One set on each of deskslim-2,
+          # deskslim-1 and tuf-b550, so one host down or cooling does not stall them; not on
+          # ms-a2 while host-headroom.py rates it FULL. borrows: the Unity test slot it runs on;
+          # it registers withheld and the governor admits it only while it lends it that slot,
+          # so it adds jobs, never cores (apps/ci-runner-governor, "Lending"). Forgejo seats
+          # need no entry: the renderer puts one on every lendable slot whose host carries forgejo.
+          ci_repo_runners: &personal_repo_runners
+            - {repo: Kblack0610/.dotfiles-private, slot: dotfiles-private-1, borrows: 1}
+            - {repo: Kblack0610/gungan-speak, slot: gungan-speak-1, borrows: 2}
+            - {repo: Kblack0610/personal-sites, slot: personal-sites-1, borrows: 3}
+        deskslim-1:
+          unity_ci_slots: 3
+          unity_ci_full: true
+          unity_ci_gate: true
+          ci_repo_runners: *personal_repo_runners
         # The workstation, the human's work machine: merge gates only
         # (unity_ci_full false, so no nightly, release or Multi run lands here).
-        # apps/ci-runner-governor/config.json repeats this as "full": false for its admit.
+        # The governor reads it from the CI topology for its admit.
         # Each slot has its own three-core cpuset and a 16G cap (ci_hosts below).
         # Uncapped slots took 12 cores and 48G in October; the human asked for
         # these two again on 2026-11-03, once unity-core-playground stopped
@@ -382,111 +394,23 @@ all:
           unity_ci_slots: 2
           unity_ci_full: false
           unity_ci_gate: true
-        # The Ubuntu 24.04 Hyper-V VM on windows-media (Ryzen 9 5900XT, 64G),
-        # added 2026-11-13: 24 vCPUs and 50G static of the host's 32 threads and
-        # 64G. Hyper-V does not pin vCPUs, so Windows and the TV share the cores
-        # by scheduler, with 14G of memory of their own. Two slots
-        # of three cores and 14G each, with three cores and 8G for the guest OS
-        # (docs/unity-ci-hardware.md sizing). Full runs and gates: it is owned and
-        # never preempted. Not unity-wide until it passes the ucp-1521 probes.
-        # Three slots until 2026-11-13: the third's cores went to four light slots
-        # (linux_ci_runners), since light is the front door of every Unity gate
-        # and #953 left razer's two alone (25 waiting, up to 24 min) while AWS
-        # had 24 Unity slots idle. The host read FULL, so a swap, not an addition.
-        # Setup and the VM itself: docs/windows-machines.md.
-        windows-media-ci:
-          ansible_host: 192.168.1.27   # windows-media-ci (DHCP reservation)
-          unity_ci_slots: 2
+        # Joined 2026-11-20 on the PC that held the windows-media-ci Hyper-V VM, so it takes
+        # that VM's place: full runs and gates, and the personal repo runners.
+        # Not unity-wide until it passes the ucp-1521 probes.
+        tuf-b550:
+          unity_ci_slots: 4
           unity_ci_full: true
           unity_ci_gate: true
-        # The player-build host (platform infra/aws-ci-burst, added 2026-11-10): an
-        # on-demand m7a.8xlarge with a 900G volume, reached through SSM with the
-        # same instance profile and library bucket as the Spot hosts. Slots 1-3 carry unity-build
-        # (unity_ci_build_slots), so playground release.yml's builds run there and no gate
-        # or nightly can; slots 4-9 are pool test slots (unity, unity-full, unity-gate). Each
-        # build slot shares its cores with two test slots, and the governor never runs a
-        # build and a test in one pair (apps/ci-runner-governor/config.json "pairs"). It
-        # starts the host when a build waits, and for tests as the last standby host.
-        # Default image list: desktop builds need the windows flavor.
-        aws-build-1:
-          host_tier: standard
-          ansible_host: i-0856b245ff7a81321
-          ansible_user: ubuntu
-          ansible_ssh_common_args: >-
-            -o ProxyCommand="aws ssm start-session --profile bnb --region us-east-2
-            --target %h --document-name AWS-StartSSHSession --parameters portNumber=%p"
-          unity_ci_slots: 9
-          unity_ci_build_slots: 3
-          # Releases take slots 1-2 only (playground release.yml asks unity-release),
-          # so a release, or one per game from ship.sh, never holds the slot players.yml
-          # builds on; a release alone had all three for hours on 2026-11-11 (hc-263).
-          unity_ci_slot_labels:
-            1: [unity-release]
-            2: [unity-release]
-          unity_ci_gate: true
-          unity_ci_images_pull: true
-          unity_ci_lan: false
-          unity_ci_library_s3: aws-burst-1-libraries-311141527647
-          # Every cold release tree fetches the imports another tree made (playground ucp-1913).
-          unity_ci_accelerator: 172.17.0.1:10080
-        # Spot hosts (platform infra/aws-ci-burst, 2026-11-13), one instance type each, ahead
-        # of aws-build-1 in the governor standby (the on-demand burst hosts were retired 2026-11-16). No unity_ci_gate: a reclaim kills
-        # what runs, so they take nightlies and bulk work, not merge gates (ucp-1778).
-        # 16 cores with SMT, so five slots of three cores (ci_hosts below).
-        aws-spot-1:
-          host_tier: standard
-          ansible_host: i-0b4c89a54f8e25ad5
-          ansible_user: ubuntu
-          ansible_ssh_common_args: >-
-            -o ProxyCommand="aws ssm start-session --profile bnb --region us-east-2
-            --target %h --document-name AWS-StartSSHSession --parameters portNumber=%p"
-          unity_ci_slots: 5
-          unity_ci_full: true
-          unity_ci_images_pull: true
-          unity_ci_images:
-            - unityci/editor:ubuntu-6000.0.85f1-base-3
-            - unityci/editor:ubuntu-6000.3.27f1-base-3
-          unity_ci_lan: false
-          unity_ci_library_s3: aws-burst-1-libraries-311141527647
-        aws-spot-2:
-          host_tier: standard
-          ansible_host: i-0c244a80e9cf430b1
-          ansible_user: ubuntu
-          ansible_ssh_common_args: >-
-            -o ProxyCommand="aws ssm start-session --profile bnb --region us-east-2
-            --target %h --document-name AWS-StartSSHSession --parameters portNumber=%p"
-          unity_ci_slots: 5
-          unity_ci_full: true
-          unity_ci_images_pull: true
-          unity_ci_images:
-            - unityci/editor:ubuntu-6000.0.85f1-base-3
-            - unityci/editor:ubuntu-6000.3.27f1-base-3
-          unity_ci_lan: false
-          unity_ci_library_s3: aws-burst-1-libraries-311141527647
-        aws-spot-3:
-          host_tier: standard
-          ansible_host: i-04ca535b8876dff6f
-          ansible_user: ubuntu
-          ansible_ssh_common_args: >-
-            -o ProxyCommand="aws ssm start-session --profile bnb --region us-east-2
-            --target %h --document-name AWS-StartSSHSession --parameters portNumber=%p"
-          unity_ci_slots: 5
-          unity_ci_full: true
-          unity_ci_images_pull: true
-          unity_ci_images:
-            - unityci/editor:ubuntu-6000.0.85f1-base-3
-            - unityci/editor:ubuntu-6000.3.27f1-base-3
-          unity_ci_lan: false
-          unity_ci_library_s3: aws-burst-1-libraries-311141527647
+          ci_repo_runners: *personal_repo_runners
 
 
     # macOS hosts in the same Unity pool (site.yml, "Unity CI runner pool
     # (macOS)"). Native editor, no container, so no ci_hosts budget: macOS has
-    # no cpusets. Mirrored in RUNNER_ROSTER like unity_ci_runners.
+    # no cpusets. Rendered into the CI topology like unity_ci_runners.
     unity_ci_mac_runners:
       # No Mac in the pool since 2026-11-10: the Mac Studio, its only host, was
       # sold. Add a Mac here to bring the
-      # pool back; RUNNER_ROSTER mirrors it.
+      # pool back.
       hosts: {}
 
     # Service hosts: no CI of any kind (GitHub runners, Unity slots, the
@@ -500,65 +424,87 @@ all:
     # 11-13, and Prometheus there had no liveness kill (two before): its three
     # restarts were two asus reboots and one clean exit shared with
     # victoria-metrics (asus-prometheus-48h-verify).
-    # scripts/check-runner-roster.py fails CI when a host here is in
-    # linux_ci_runners, unity_ci_runners or ci_hosts, and the "Retire CI on
+    # scripts/render-ci-topology.py fails CI when a host here is in
+    # unity_ci_runners or ci_hosts, and the "Retire CI on
     # no_ci_hosts" play in site.yml removes what a host still runs. Before
     # placing any work on any host, read scripts/host-headroom.py <host>.
     no_ci_hosts:
       hosts:
         hp-victus:
         asus-laptop:
+        # Agents only, never a CI pool of any kind (the human, 2026-11-18): its RAM and
+        # cores belong to the Claude sessions fleet_workers places on it.
+        razer-laptop:
 
     # One CPU and memory budget per CI host (roles/ci-host-budget): every runner
     # and container of every CI workload on the host shares it, and what is left
     # stays with k3s and the OS. Starting values, tuned against a full nightly.
+    # ci_caps: the job kinds the host can run (light, heavy, unity, unity-build, forgejo).
+    # Every slot takes each of them its kind can hold (scripts/render-ci-topology.py
+    # HOST_CAPS says which), so a Unity test slot also takes its host's light and heavy
+    # jobs. A host's own slots of a kind need that kind here; a cloud host takes no
+    # light or heavy, so a small job never powers a paid host. Drop a cap and
+    # re-apply to take it off every slot of the host.
+    # Forgejo seats per lendable slot are not set here: render-ci-topology.py registers
+    # floor(slot CPUs / MIN_JOB_CORES) and the governor admits as many as a measured weight
+    # fits (ci-runner-governor config.json "weights"). Repo seats stay one per slot.
+    # ci_local_seats: how many local test runs (no forge, no runner) the governor leases at once
+    # on a LAN Unity host; rendered as the host's "local_seats", never as slots.
+    # ci_seat_kinds: the GitHub kinds (light, heavy; each in ci_caps) that also get seats on
+    # the host's lendable slots, so several small jobs share one lent slot; the host's Unity slots
+    # then drop those kinds from their caps, so a seat is a small job's one path there. Every LAN
+    # host that takes light or heavy sets it (hc-693): seats were not the OOM source (24h to
+    # 2026-11-19: 6, 5 and 5 kills on deskslim-2, ms-a2 and deskslim-1 with none, 3 on
+    # windows-media-ci, since retired, with seats). Roll back one host: drop its key, re-render, apply.
     ci_hosts:
       hosts:
-        # 8 cores / 16 threads, SMT siblings are n and n+8. Cores 0-1 (CPUs
-        # 0-1, 8-9) are k3s and the OS; k3s_cpus pins pods there with 4 CPUs of
-        # allocatable, after 6-CPU backtests landed beside CI and the 15-minute
-        # load hit 18 (2026-11-10). Unity
-        # gets cores 2-4 for its one slot and the platform runners cores 5-7,
-        # each on its own, so neither is throttled by the other's weight.
-        # 93 GB usable, so CI gets most of it; a Unity job peaks around 8 GB. A
-        # slot stops at 20G: without a cap each took the 32G default, five could
-        # reach 160G against the 60G Unity budget, and one shard was killed on
-        # 11-02 after 462 s.
-        # These caps hold until the RAM move to 32 GB (hc-328); #1038 has the 32 GB
-        # layout (one light slot, 6G, no Unity slot) to re-apply with the swap.
-        razer-laptop:
-          ci_cpus: 2-7,10-15
-          ci_memory_max: 72G
-          ci_unity_cpus: 2-4,10-12
-          ci_unity_slot_cpus: ["2-4,10-12"]
-          ci_unity_memory_max: 60G
-          ci_linux_cpus: 5-7,13-15
-          k3s_cpus: 0-1,8-9
-          ci_unity_slot_memory_max: 20G
-          ci_linux_memory_max: 40G
         # ms-a2: 16 cores / 32 threads, SMT siblings n and n+16 (sysfs,
-        # 2026-11-16), 91G. Cores 0-1 are k3s and the OS, as on razer. Each Unity
-        # slot gets three cores and 16G (docs/unity-ci-hardware.md sizing), cores
-        # 2-13. Cores 14-15 (CPUs 14-15,30-31) stay outside CI for now: room
-        # for the platform runners when razer-laptop gives up its own.
+        # 2026-11-16), 91G. Cores 0-1 are k3s and the OS. Each Unity
+        # test slot gets 16G (docs/unity-ci-hardware.md sizing) except slot 1: slots 1-2 three
+        # cores each on cores 2-7, slots 3-4 four each on cores 8-15, and build slot 5 takes
+        # test slots 3 and 4's eight cores and their 32G (a build was killed at 14G,
+        # razer built in 20G). Slot 1 gets 22G: it carries slim-tour, which builds a full
+        # IL2CPP player, and at 16G the dodginballs smoke build thrashed 98 min and was
+        # OOM-killed (2026-11-19, failcnt 680626). Either worst case, slots 1+2+5 or 1+2+3+4,
+        # is 70G = ci_unity_memory_max, leaving 21G for the host and k3s; raise that budget
+        # in step with any slot. The slots share all 28 CI threads (ci_unity_slot_share, on
+        # trial since 2026-11-19); the lists below size them rather than fence them.
         ms-a2:
-          ci_cpus: 2-13,18-29
-          ci_memory_max: 64G
-          ci_unity_cpus: 2-13,18-29
-          ci_unity_slot_cpus: ["2-4,18-20", "5-7,21-23", "8-10,24-26", "11-13,27-29"]
-          ci_unity_memory_max: 64G
-          ci_unity_slot_memory_max: 16G
+          ci_caps: [light, heavy, unity, unity-build, forgejo]
+          ci_seat_kinds: [light, heavy]
+          ci_cpus: 2-15,18-31
+          ci_unity_slot_share: true
+          ci_memory_max: 70G
+          ci_unity_cpus: 2-15,18-31
+          ci_unity_slot_cpus: ["2-4,18-20", "5-7,21-23", "8-11,24-27", "12-15,28-31", "8-15,24-31"]
+          ci_unity_memory_max: 70G
+          ci_unity_slot_memory_max: [22G, 16G, 16G, 16G, 32G]
           k3s_cpus: 0-1,16-17
         # deskslim-2: 12 cores / 24 threads, SMT siblings n and n+12, 60G. Cores
-        # 0-1 are k3s and the OS; three slots of three cores and 14G on cores
-        # 2-10, which leaves core 11 and 18G for the host. A fourth slot would take
-        # k3s's cores.
+        # 0-1 are k3s and the OS; three Unity slots of 14G on cores 2-11, slot 3 with
+        # four cores, which leaves 12G for the host and k3s. Its light and heavy jobs run
+        # on seats (ci_seat_kinds), and the governor lends its Unity slots to those, to
+        # Forgejo and to the personal repo runners.
         deskslim-2:
-          ci_cpus: 2-10,14-22
-          ci_memory_max: 42G
-          ci_unity_cpus: 2-10,14-22
-          ci_unity_slot_cpus: ["2-4,14-16", "5-7,17-19", "8-10,20-22"]
-          ci_unity_memory_max: 42G
+          ci_caps: [light, heavy, unity, forgejo]
+          ci_seat_kinds: [light, heavy]
+          ci_cpus: 2-11,14-23
+          ci_memory_max: 48G
+          ci_unity_cpus: 2-11,14-23
+          ci_unity_slot_cpus: ["2-4,14-16", "5-7,17-19", "8-11,20-23"]
+          ci_unity_memory_max: 48G
+          ci_unity_slot_memory_max: 14G
+          k3s_cpus: 0-1,12-13
+        # deskslim-1: deskslim-2's twin layout (12 cores / 24 threads, SMT siblings n
+        # and n+12, lscpu 2026-11-18, 61G), so the same slots and caps.
+        deskslim-1:
+          ci_caps: [light, heavy, unity, forgejo]
+          ci_seat_kinds: [light, heavy]
+          ci_cpus: 2-11,14-23
+          ci_memory_max: 48G
+          ci_unity_cpus: 2-11,14-23
+          ci_unity_slot_cpus: ["2-4,14-16", "5-7,17-19", "8-11,20-23"]
+          ci_unity_memory_max: 48G
           ci_unity_slot_memory_max: 14G
           k3s_cpus: 0-1,12-13
         # The workstation: Ryzen 9 9950X3D, 16 cores / 32 threads, SMT
@@ -568,62 +514,38 @@ all:
         # (CPUs 14-15,30-31) also stay outside CI. Each Unity slot gets three
         # cores and 16G; the two together stop at 32G. No platform runners.
         cachyos-x8664-main:
+          ci_caps: [unity]
           ci_cpus: 8-13,24-29
           ci_memory_max: 32G
           ci_unity_cpus: 8-13,24-29
           ci_unity_slot_cpus: ["8-10,24-26", "11-13,27-29"]
           ci_unity_memory_max: 32G
           ci_unity_slot_memory_max: 16G
-        # windows-media-ci, the Hyper-V VM: 12 vcores / 24 threads, SMT siblings
-        # are n and n+1 (lscpu), 49G. Cores 0-2 (CPUs 0-5) stay with the guest OS,
-        # docker and the runner agents; each Unity slot gets three cores and stops
-        # at 14G, and the four light slots share cores 9-11 (CPUs 18-23) and 14G.
-        # No temperature: a VM has no k10temp, so the governor admits on
-        # idle, PSI and memory alone.
-        windows-media-ci:
-          ci_cpus: 6-23
-          ci_memory_max: 42G
-          ci_unity_cpus: 6-17
-          ci_unity_slot_cpus: ["6-11", "12-17"]
-          ci_unity_memory_max: 28G
+          # Local test runs (unity-core-playground scripts/test/slots.sh) run outside the CI
+          # cpusets, on the agent CPUs; the governor leases each run a seat over /lease under
+          # this host's hot and idle checks (apps/ci-runner-governor, "Local seats"). 3 is
+          # today's 2 open slots plus the room slot slots.sh opens on an idle host.
+          ci_local_seats: 3
+        # tuf-b550: Ryzen 9 5900XT, 16 cores / 32 threads, SMT siblings n and n+16
+        # (lscpu -e, 2026-11-20), 62G, /dev/kvm from kvm_amd (checked 2026-11-20,
+        # so heavy seats). Cores 0-1 are k3s and the OS; ms-a2's slot layout
+        # on cores 2-15 (slots 1-2 three cores, 3-4 four). Each slot stops at 14G, the
+        # deskslims' cap: 7-day peaks to 2026-11-20 are 13.9G at a 14G cap (deskslim-1) and
+        # p99 10.1-10.5G per slot. Four caps add up to 56G, over the 50G shared Unity cap,
+        # which keeps 12G for the host and k3s as on deskslim-2 (the slots may add up to
+        # more, roles/ci-host-budget): deskslim-2's three slots together peaked at 31.5G,
+        # so four at that rate are about 42G. Provisional, medium confidence: revisit if a
+        # job dies on the 50G cap, or MemAvailable on the host drops under 6G.
+        tuf-b550:
+          ci_caps: [light, heavy, unity, forgejo]
+          ci_seat_kinds: [light, heavy]
+          ci_cpus: 2-15,18-31
+          ci_memory_max: 50G
+          ci_unity_cpus: 2-15,18-31
+          ci_unity_slot_cpus: ["2-4,18-20", "5-7,21-23", "8-11,24-27", "12-15,28-31"]
+          ci_unity_memory_max: 50G
           ci_unity_slot_memory_max: 14G
-          ci_linux_cpus: 18-23
-          ci_linux_memory_max: 14G
-        # aws-build-1, the same m7a.8xlarge: build slots 1-3 of 10 cores for whole-game
-        # player builds, 36G each (a build SIGKILLed at 14G on aws-burst-1, #1817;
-        # razer builds in 20G), and test slots 4-9 of 5 cores and 16G, two on each build
-        # slot's cores (the governor's "pairs", so a pair's 32G fits its build slot's 36G).
-        # Core 0 stays with the OS and the SSM agent, core 31 is spare.
-        aws-build-1:
-          ci_cpus: 1-31
-          ci_memory_max: 116G
-          ci_unity_cpus: 1-30
-          ci_unity_slot_cpus: ["1-10", "11-20", "21-30", "1-5", "6-10", "11-15", "16-20", "21-25", "26-30"]
-          ci_unity_memory_max: 108G
-          ci_unity_slot_memory_max: [36G, 36G, 36G, 16G, 16G, 16G, 16G, 16G, 16G]
-        # The Spot hosts: 16 cores with SMT (vCPU n and n+16 share core n), core 0 and its
-        # twin left to the OS, five slots of three whole cores and 16G each.
-        aws-spot-1:
-          ci_cpus: 1-15,17-31
-          ci_memory_max: 112G
-          ci_unity_cpus: 1-15,17-31
-          ci_unity_slot_cpus: ["1-3,17-19", "4-6,20-22", "7-9,23-25", "10-12,26-28", "13-15,29-31"]
-          ci_unity_memory_max: 100G
-          ci_unity_slot_memory_max: 16G
-        aws-spot-2:
-          ci_cpus: 1-15,17-31
-          ci_memory_max: 112G
-          ci_unity_cpus: 1-15,17-31
-          ci_unity_slot_cpus: ["1-3,17-19", "4-6,20-22", "7-9,23-25", "10-12,26-28", "13-15,29-31"]
-          ci_unity_memory_max: 100G
-          ci_unity_slot_memory_max: 16G
-        aws-spot-3:
-          ci_cpus: 1-15,17-31
-          ci_memory_max: 112G
-          ci_unity_cpus: 1-15,17-31
-          ci_unity_slot_cpus: ["1-3,17-19", "4-6,20-22", "7-9,23-25", "10-12,26-28", "13-15,29-31"]
-          ci_unity_memory_max: 100G
-          ci_unity_slot_memory_max: 16G
+          k3s_cpus: 0-1,16-17
 
     # Nodes that run the game servers (apps/playground-server pins to the
     # kblab.me/game-server label, roles/node-labels sets it). Each host keeps
@@ -631,37 +553,159 @@ all:
     # game's tick runs on. Moving the server to another box (a mini PC, the
     # Razer) is this group, that host's ci_cpus, and the router's LAN answer and
     # UDP forward (apps/playground-server/README.md).
-    # Fleet workers: hosts fleet-dispatch places light claude sessions on, over
-    # ssh. dotfiles .local/lib/fleet-hosts.sh reads this group from this file
+    # Fleet workers: hosts fleet-dispatch places light sessions on over ssh, on
+    # claude or on a headless harness the host lists in fleet_harnesses. dotfiles
+    # .local/lib/fleet-hosts.sh reads this group from this file
     # alone, so its vars stay here and never move to group_vars/. Provisioned
-    # by roles/fleet-worker; the human signs each account in once. Runbook:
+    # by roles/fleet-worker; claude-acct token push gives it each Claude account's token. Runbook:
     # docs/runbooks/fleet-worker.md.
     #   fleet_place      false keeps a provisioned host out of placement
     #   fleet_max_live   sessions at once on it (a light item is one run unit)
-    #   fleet_repos      what it clones, and the repos whose items it takes;
-    #                    dest is the same path as on the workstation
-    #   fleet_state_host where its queue and ask writes go (AGENT_STATE_HOST).
-    #                    The machine it names is the fleet home: it also holds
-    #                    the store, serves agent-web and runs the singleton
-    #                    lanes (roles/fleet-worker tasks/home.yml on a worker)
+    #   fleet_repos      what it clones, and the repos whose items it takes: set once on
+    #                    the group (a host var replaces it outright); dest is the
+    #                    same path as on the workstation
+    #   fleet_harnesses  the headless harnesses it runs besides claude
+    #                    (names in the dotfiles-private harness map); placed only
+    #                    while its probe reads each ready (fleet-dispatch harness-ready)
+    #                    never codex: it runs on the workstation only (the human,
+    #                    2026-11-19), so no worker lists it and the role installs none
     #   fleet_ssh_host  where fleet-dispatch ssh goes when ansible_host is not
     #                    it (a cloud worker: an instance id behind SSM)
-    #   fleet_power      governor: the ci-runner-governor starts and stops it
-    #                    on fleet-dispatch's demand (its config.json "workers")
     #   fleet_tailscale  true joins the tailnet (role tailscale-node)
+    #   fleet_lease      false: a peer that never holds the fleet lease (default: Arch,
+    #                    so a machine that lacks agent-web never does)
+    #   ssh_host_ed25519 its /etc/ssh/ssh_host_ed25519_key.pub. Every machine in
+    #                    fleet_workers, fleet_controllers and desktop_workstations
+    #                    has one, and each trusts the others' under every name
+    #                    it is dialed by (roles/host-identity)
     fleet_workers:
       vars:
-        fleet_state_host: pc-home-cachy-main.lan
         fleet_max_live: 1
+        # The standard set every worker clones: each light repo in the dotfiles
+        # project-map whose sessions run headless with what a worker has. A host
+        # var replaces this list outright, so a host does not set its own.
+        # Left off, and why (each one is a row to make it runnable, not a host
+        # list): bnb-platform needs its SOPS-decrypted .env and a per-app
+        # Postgres; tilecast's app tests need the Android SDK; audio's tests
+        # need the PipeWire rig; ebay-lister runs only through its vault wrapper;
+        # unity-core's tests run in a Unity editor; client repos stay on the
+        # workstation.
         fleet_repos:
           - dest: ~/.dotfiles
             repo: https://github.com/Kblack0610/.dotfiles.git
+          - dest: ~/dev/home/home-config
+            repo: https://git.kblab.me/kblack0610/home-config.git
+            remote: forgejo   # the name fleet-hosts.sh and fleet-roster-fetch.timer read
+          - dest: ~/dev/crypto/freqtrade_trading_attempt
+            repo: https://github.com/Kblack0610/freqtrade_trading_attempt.git
+          - dest: ~/dev/bnb/playtest-bot
+            repo: https://github.com/Kblack0610/playtest-bot.git
+          - dest: ~/dev/personal/personal-sites
+            repo: https://github.com/Kblack0610/personal-sites.git
+          - dest: ~/dev/bnb/games/bnb-game-servers
+            repo: https://git.kblab.me/kblack0610/bnb-game-servers.git
+          - dest: ~/dev/openmptcsetup
+            repo: https://github.com/kblack0610/openmptcsetup.git
+          - dest: ~/src/zmk_config
+            repo: https://github.com/Kblack0610/zmk_config.git
       hosts:
         # The first worker (2026-11-07): wired and always on, 16 threads and
-        # 96 GB until the RAM move to 32 GB (hc-328). It held the fleet home 2026-11-15 to
-        # 11-16 while the workstation was down; not placed yet.
+        # 32 GB since the RAM move (hc-328), 96 GB before. It ran the singleton lanes 2026-11-15 to
+        # 11-16 while the workstation was down. Placed at 5: with 52 freqtrade pods (about 10.7 GB) and 2
+        # live sessions (770 MB together) it had 17.9 of 32 GB free at load 0.3 on 2026-11-18, so 3 more at the
+        # 3 GB worst case of a session building leave 8.9 GB (28%), over fleet-dispatch's 20%
+        # free-memory floor (DISPATCH_HOST_MEM_MIN_PCT); 4 more would leave 18%. Each start also
+        # reads that floor and the load pace again. Provisional, medium confidence; revisit when
+        # host-headroom razer-laptop reads ROOM over a week at 5 live, or freqtrade moves off it.
+        # Canary, night and trainee items go here before the workstation (fleet_first, dotfiles #2418, #2635).
         razer-laptop:
-          fleet_place: false
+          # 8945HS, 8 cores / 16 threads, siblings n and n+8 (lscpu -e, 2026-11-18). Agent
+          # work gets 14 of 16 (87.5%); core 0 (CPUs 0,8) stays with the OS. Its k3s pods
+          # (freqtrade) are not pinned (no k3s_cpus), so they share all 16 with agent work.
+          agent_cpus: 1-7,9-15
+          fleet_place: true
+          fleet_max_live: 5
+          fleet_first: [canary, night, trainee]
+          # nim, ocfree and opencode-go canaries and trainee runs go here too, so a hot
+          # workstation no longer holds them (2026-11-18: three nim canaries waited behind
+          # a 96 C workstation while it sat idle; ar-3222).
+          fleet_harnesses: [nim, ocfree, opencode-go]
+          # No ~/.notes clone, so fleet-dispatch fails here ("no current project"): it
+          # took the lease in the 2026-11-19 workstation reboot and dispatch stopped.
+          fleet_lease: false
+          ssh_host_ed25519: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINmhQxBIidZJ6HtH0d5CRf4sj0l1CPYymCrvN/dcypAa
+
+    # Machines the human drives the fleet from: they read and start sessions
+    # but never run one, so they are not fleet_workers and only the host-identity
+    # play targets this group. cachyos-rog (ROG Flow, 16 GB) is the mobile seat for when the human
+    # is not on Moonlight to the workstation. It roams and sleeps, so it is not
+    # on the fleet-pulse roster. Host-key trust between roster machines is built
+    # from this inventory (fleet-home-resilience P4).
+    # Plan: ~/.claude/plans/feat-fleet-one-agent-container-image-tha.md (p1).
+    fleet_controllers:
+      hosts:
+        cachyos-rog:
+          # check-placement needs a tier on every host; probation is the
+          # narrowest, and this host is in no group any workload is placed on.
+          host_tier: probation
+          thermal_cap_exempt: carries no load; it reads and starts sessions but runs none, and roams on battery
+          # Tailnet IP: it roams off the LAN, and no DNS here resolves its name.
+          ansible_host: 100.102.154.120
+          ansible_user: kblack0610
+          ssh_host_ed25519: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIK39bl75NdWXxa1SKSpgnH1Vg2Jr+WYYHXmK+povqIes
+
+    # fleet.kblab.me, the machines board, and its roster: the one place a machine joins or
+    # leaves it. scripts/render-fleet-pulse.py renders apps/gatus-fleet/config.yaml and
+    # apps/fleet-exporter/roster.json from this group; fleet-exporter serves roster.json at
+    # fleet.kblab.me/roster, which the status bars (dotfiles fleet_pulse.sh, sketchybar fleet.sh)
+    # count against. CI fails when either file is not what this group renders.
+    # Rostered means counted: a rostered machine that is not reporting turns the fleet glyph
+    # amber. A machine that sleeps by design (a phone, the Pi Zeros) is declared with
+    # roster false, so it shows on the board and never pins the glyph.
+    #   fleet_pulse_name     the gatus name (default: the inventory name), kebab-case
+    #   fleet_pulse_group    the gatus group (default k3s)
+    #   fleet_pulse_push     true: it pushes a heartbeat (dotfiles fleet-pulse push.sh) because
+    #                        nothing can reach it; otherwise gatus polls node_exporter on
+    #                        ansible_host:9100
+    #   fleet_pulse_units    systemd units the poll also needs active (node-exporter-linux exports them)
+    #   fleet_pulse_roster   false: on the board, not counted (default true)
+    #   fleet_pulse_display  the label of its own dot on the waybar; an unrostered machine never
+    #                        gets a dot, it is listed in the tooltip while it reports
+    #   fleet_pulse_devices  push-only devices Ansible does not manage: {name, group, roster, display}
+    #   fleet_pulse_groups   {gatus group: label}, each drawn as one dot
+    # Retiring a machine is deleting its line, or its k3s_nodes entry: gatus prunes the endpoint's
+    # stored statuses when the pod rolls on the new config (apps/gatus-fleet/README.md).
+    fleet_pulse:
+      vars:
+        fleet_pulse_groups: {k3s: k3s}
+        fleet_pulse_devices:
+          # Gigantic Playground's corporate Mac: off-LAN and unpollable, so it pushes.
+          - {name: gp-mac, group: workplace, display: gp}
+          # Android tablets: apps/headwind-fleet-bridge pushes for each device in Headwind.
+          - {name: h0001, group: android}   # Lenovo Tab M11 (TB330)
+          - {name: h0002, group: android}   # Lenovo Tab M11 (TB336)
+          - {name: h0003, group: android}   # Lenovo Tab M9 (TB305)
+          # Enrolled in Headwind but unconfirmed: not counted until someone confirms what it is.
+          - {name: h0004, group: android, roster: false}
+          # The carry phone pushes from Termux and sleeps under Doze (docs/mobile-fleet.md).
+          - {name: ken-s25-main, group: android, roster: false}
+      # Every k3s_nodes host is polled under k3s, so a new node joins this board by joining that group.
+      children:
+        k3s_nodes:
+      hosts:
+        cachyos-x8664-main:
+          fleet_pulse_name: linux-cachyos   # its gatus key predates hostname naming
+          fleet_pulse_group: homelab
+          fleet_pulse_push: true
+          fleet_pulse_display: main
+        mac-mini:
+          fleet_pulse_group: homelab   # node_exporter from the node-exporter-mac role
+        audio-living:   # a room that is up but silent is the failure that matters here
+          fleet_pulse_group: audio
+          fleet_pulse_units: [snapclient.service, audio-endpoint-capture.service]
+        audio-bedroom:
+          fleet_pulse_group: audio
+          fleet_pulse_units: [snapclient.service]
 
     # No admitted game host until dedicated capacity is commissioned (ask OqbBvu).
     game_server_nodes:
@@ -674,32 +718,76 @@ all:
       hosts:
         hp-victus:
 
-    # Hosts whose CPU power is capped to hold them below their thermal limit
-    # (roles/thermal-cap). 2026-10-23: asus held 93-96C through the Unity
-    # nightly and dropped off the LAN; hp-victus peaked at 98C of 100C crit.
-    # Target: at most 85C sustained over a full nightly.
+    # The fleet's thermal standard (roles/thermal-cap): every x86 Linux machine
+    # that carries load has its CPU power capped from setup, so a long job holds it
+    # at most 85C sustained instead of at its limit (human, 2026-11-17: a machine
+    # hot or not set up to the standard is red). Membership comes from the child
+    # groups, so a host added to linux_bare_metal, watchdog_x86 (the x86 k3s nodes)
+    # or desktop_workstations is capped with no edit here. An x86 Linux host outside
+    # them sets thermal_cap_exempt: <why> (a cloud VM: the provider owns its
+    # cooling); scripts/check-thermal-standard.py fails CI on a host with neither.
+    # Out of scope: the Pis (no boost or power knob to cap), the Macs (no sysfs;
+    # the firmware owns fans and clocks), Windows (the role writes Linux sysfs)
+    # and the router.
+    # 2026-10-23: asus held 93-96C through the Unity nightly and dropped off the
+    # LAN; hp-victus peaked at 98C of 100C crit. 7 days to 2026-11-17, uncapped
+    # under Unity CI: ms-a2 peaked at 99.5C, deskslim-2 at 97.6C, and the
+    # workstation read a median 96.25C (p90 97C) and peaked at 106.25C.
     thermal_capped:
+      children:
+        linux_bare_metal:
+        watchdog_x86:
+        desktop_workstations:
+      vars:
+        # Boost off, the lever on AMD, which has no writable package power limit
+        # (ms-a2's and deskslim-2's RAPL zone has no constraint files, checked
+        # 2026-11-17). A host with a better lever overrides it below. Without
+        # boost a core runs at base clock: 2.5GHz on ms-a2's 9955HX, 4.4GHz on
+        # deskslim-2's 9900X, 4.3GHz on the workstation's 9950X3D.
+        thermal_cap_boost: false
       hosts:
-        # AMD: no writable package power limit, so boost goes off. Already on
-        # the balanced profile when it hit 94C. Charge limit: on the charger 24/7.
-        # 2026-11-02: still 94C peak over 12h with boost off on balanced, so quiet.
+        # AMD. Already on the balanced profile when it hit 94C. Charge limit: on
+        # the charger 24/7. 2026-11-02: still 94C peak over 12h with boost off on
+        # balanced, so quiet. 2026-11-17: quiet with boost off still sat at
+        # 90.5C (10m minimum) through the whole walkforward window (01:00-06:30
+        # UTC, two to four shards, 27-50% CPU busy) every night, the firmware's
+        # own limit, so a clock ceiling under the 3.3GHz base clock. The firmware
+        # was already throttling to about 2.3GHz there; at 2.2GHz the 15m max was
+        # 78.9C with walkforward on 3.3 cores (busy 40%, load15 6.8). Revisit if
+        # a 15m max passes 85C under load, or the asus shards finish fewer folds.
         asus-laptop:
           thermal_cap_platform_profile: quiet
-          thermal_cap_boost: false
           thermal_cap_charge_limit: 80
+          thermal_cap_max_freq_khz: 2200000
         # Intel: firmware PL1 is 55W (MSR; MMIO says 130W). Roughly 1.2C per
         # watt above ambient at 55W/98C, so ~40W should land near 85C. No
         # platform profile and no charge threshold in its firmware.
         # 2026-11-02: at 40/55W it still peaked at 100C over 12h (p90 85C, 4% of
         # the time above 90C); the 55W short-term limit made the peaks. 32/40W.
+        # Turbo stays on: RAPL is its cap.
         hp-victus:
           thermal_cap_rapl_long_watts: 32
           thermal_cap_rapl_short_watts: 40
-        # acpi-cpufreq with a global boost switch. No platform_profile, no
-        # writable RAPL limit, no charge threshold (the battery holds at ~97%,
-        # "Not charging", on AC).
-        razer-laptop:
-          thermal_cap_boost: false
+          thermal_cap_boost: true
+        # AMD 9955HX, amd-pstate-epp: base clock 2.5GHz, boost 5.06GHz, so boost off
+        # halved it. 48h to 2026-11-19 with boost off it ran the same jobs slower than
+        # deskslim-2 (PlayMode median 644s vs 486s, Build 209s vs 109s). Peaks: 96-97C
+        # at 5.1GHz and about 15 busy cores (to 2026-11-18 04:00 UTC), 82C at 2.5GHz and
+        # 23. Boost on under a clock ceiling instead, raised a step at a time while the
+        # 15m max stays under 85C under load. Provisional, low confidence: first step
+        # 3.2GHz on 2026-11-19 with the slots sharing their cores (more of them busy);
+        # revisit after 48h of temperature and job times (hc-720).
+        ms-a2:
+          thermal_cap_boost: true
+          thermal_cap_max_freq_khz: 3200000
+        # AMD 5900XT, amd-pstate-epp on kernel 7.3.3: the group default, boost off.
+        # Boost cannot be turned back on ("Cannot enable BOOST" on the global and
+        # per-policy switch, checked 2026-11-20), so boost on under a ceiling, as on
+        # ms-a2, is not available.
+        tuf-b550:
+        # razer-laptop (acpi-cpufreq, a global boost switch), deskslim-2 (amd-pstate-epp)
+        # and the workstation have no platform_profile, no writable RAPL limit and no
+        # charge threshold: the group default alone.
 
     # Whole-house audio: one host per room, each a snapclient of the snapserver
     # in apps/snapcast. See ansible/roles/audio-endpoint/README.md.
@@ -750,6 +838,7 @@ all:
     hetzner:
       vars:
         ansible_user: root
+        thermal_cap_exempt: a Hetzner Cloud VM; Hetzner owns its cooling
         hcloud_location: hel1
         # Inbound SSH only from the home WAN IP, and only until the tailnet is
         # up; then this list goes empty and the firewall drops all inbound.

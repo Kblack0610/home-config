@@ -8,7 +8,7 @@
 | `standard` | Ordinary apps, backed-up or rebuildable state, and CI |
 | `probation` | Scratch, load tests and eligible CI; no persistent volumes |
 
-`no_ci_hosts` remains an independent prohibition. hp-victus must never be core and must never run CI. Ask `vy3RRu`, answer `a`, preserves its explicit exclusion until another canonical eligibility rule replaces it. `check-runner-roster.py` checks both exclusions and requires the Forgejo runner to exclude core tiers.
+`no_ci_hosts` remains an independent prohibition. hp-victus must never be core and must never run CI. Ask `vy3RRu`, answer `a`, preserves its explicit exclusion until another canonical eligibility rule replaces it. `render-ci-topology.py` checks both exclusions and requires the Forgejo runner to exclude core tiers.
 
 ## Node labels
 
@@ -31,7 +31,7 @@ Apply labels before merging a scheduling restriction that reads them. Labels and
 | Check | Source | Gates |
 |---|---|---|
 | Headroom ROOM | `host-headroom.py`, 7 days | core |
-| No kernel fault in 14 days | Loki rule group `host-kernel-faults`, as `host-postmortem.py` reads it | standard, core |
+| No kernel fault in 14 days | Loki rule group `host-kernel-faults`, as `host-postmortem.py` reads it: one matching line of any rule there fails it, so a rule that is not a host fault (UpsUsbFlapping) sits in its own group; `test_host_qualify.py` parses every rule in it | standard, core |
 | Uptime 14 days | `node_boot_time_seconds` | core |
 | On mains, or no battery | `node_power_supply_online` | core |
 | Watchdog armed | `RuntimeWatchdogUSec` and `/dev/watchdog0` | standard, core |

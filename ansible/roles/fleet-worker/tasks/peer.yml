@@ -1,0 +1,176 @@
+---
+# Every worker is a peer of the agent store (tasks/store.yml) and may hold the fleet lease,
+# so it builds and enables everything the lease's holder runs: agent-web, the singleton
+# lanes, schedules-sync. There is no fleet home. Runbook: docs/runbooks/fleet-worker.md,
+# "Every worker a peer".
+
+# Arch only, like agent-panel in main.yml: apt's cargo is too old for it.
+- name: Build agent-web (cargo, as the user)
+  when: ansible_facts.os_family == "Archlinux"
+  ansible.builtin.command: cargo build --release
+  args:
+    chdir: "{{ ansible_env.HOME }}/.dotfiles/.local/src/agent-web"
+  register: _fleet_home_web
+  changed_when: "'Compiling' in _fleet_home_web.stderr"
+
+- name: Link agent-web onto PATH
+  when: ansible_facts.os_family == "Archlinux"
+  ansible.builtin.file:
+    src: "{{ ansible_env.HOME }}/.dotfiles/.local/src/agent-web/target/release/agent-web"
+    dest: "{{ ansible_env.HOME }}/.local/bin/agent-web"
+    state: link
+    force: true
+
+# fleet-state.service runs `hub needs --page` after each tick (the page for what is new on
+# hub Home's NEEDS YOU list); without the binary the unit logs "Unable to locate executable
+# hub" every minute (razer-laptop, 2026-11-15). hub-tui builds the `hub` binary.
+- name: Build hub (cargo, as the user)
+  when: ansible_facts.os_family == "Archlinux"
+  ansible.builtin.command: cargo build --release
+  args:
+    chdir: "{{ ansible_env.HOME }}/.dotfiles/.local/src/hub-tui"
+  register: _fleet_home_hub
+  changed_when: "'Compiling' in _fleet_home_hub.stderr"
+
+- name: Link hub onto PATH
+  when: ansible_facts.os_family == "Archlinux"
+  ansible.builtin.file:
+    src: "{{ ansible_env.HOME }}/.dotfiles/.local/src/hub-tui/target/release/hub"
+    dest: "{{ ansible_env.HOME }}/.local/bin/hub"
+    state: link
+    force: true
+
+# agent-queue files a board row on add and closes it on done through `notes ptask`; without the
+# binary it logs "no story row filed: no notes on PATH" and "notes: command not found" and the
+# item never gets or closes its row (razer-laptop, 2026-11-15 to 11-16). notes-bootstrap
+# --build-only is the one installer of the CLI: it builds it, publishes it to ~/.local/lib/notes
+# and links ~/.local/bin/notes, and also links notes-sync, notes-watch and ~/.config/notes. It
+# lives in the private overlay and exits 0 when its build fails, so the binary is read back
+# after it and a missing one goes to the report.
+- name: Find the notes installer (the private overlay's notes-bootstrap)
+  ansible.builtin.stat:
+    path: "{{ ansible_env.HOME }}/.local/bin/notes-bootstrap"
+    follow: true
+  register: _fleet_home_notes_boot
+
+- name: Build and link the notes CLI (notes-bootstrap --build-only)
+  when: ansible_facts.os_family == "Archlinux" and _fleet_home_notes_boot.stat.exists
+  ansible.builtin.command: "{{ ansible_env.HOME }}/.local/bin/notes-bootstrap --build-only"
+  register: _fleet_home_notes
+  changed_when: "'Compiling' in _fleet_home_notes.stderr"
+
+- name: Read whether the notes CLI is installed
+  ansible.builtin.stat:
+    path: "{{ ansible_env.HOME }}/.local/bin/notes"
+    follow: true
+  register: _fleet_home_notes_bin
+
+# A peer fleet_lease is false for never holds the lease (dotfiles fleet-lease, the no-lease
+# marker): its gate skips every singleton and its renew never takes the lease.
+- name: Mark whether this peer may hold the fleet lease (fleet_lease)
+  when: _fleet_store_peer.stat.exists
+  ansible.builtin.file:
+    path: "{{ ansible_env.HOME }}/.agent/.sync/no-lease"
+    state: "{{ 'absent' if fleet_lease | bool else 'touch' }}"
+    mode: "0644"
+    modification_time: preserve
+    access_time: preserve
+
+# The lease runs the singleton lanes and agent-web on exactly one peer (dotfiles fleet-lease);
+# store.yml starts store-sync.timer.
+- name: Renew the fleet lease (fleet-lease.timer)
+  when: _fleet_store_peer.stat.exists
+  ansible.builtin.systemd_service:
+    name: fleet-lease.timer
+    scope: user
+    enabled: true
+    state: started
+    daemon_reload: true
+
+# schedules-sync reads the github-runner-exporter feed with kubectl through the
+# API server's Service proxy; without it no state.json is written and every
+# nightly: queue hold waits forever. A worker has no admin kubeconfig, so it
+# gets one for the account that may read that proxy only
+# (apps/github-runner-exporter/feed-reader-rbac.yaml), in its own file:
+# ~/.kube/config is never written.
+- name: Install kubectl, which schedules-sync reads the feed with
+  when: ansible_facts.os_family == "Archlinux"
+  become: true
+  community.general.pacman:
+    name: kubectl
+    state: present
+
+- name: Make schedules-sync's config dir
+  ansible.builtin.file:
+    path: "{{ ansible_env.HOME }}/.config/schedules-sync"
+    state: directory
+    mode: "0700"
+
+- name: Write the kubeconfig schedules-sync reads the exporter feed with
+  ansible.builtin.copy:
+    dest: "{{ ansible_env.HOME }}/.config/schedules-sync/kubeconfig"
+    mode: "0600"
+    content: "{{ fleet_home_feed_kubeconfig | to_nice_yaml }}"
+  no_log: true
+
+- name: Make the schedules-sync unit's drop-in dir
+  ansible.builtin.file:
+    path: "{{ ansible_env.HOME }}/.config/systemd/user/schedules-sync.service.d"
+    state: directory
+    mode: "0755"
+
+- name: Point schedules-sync at that kubeconfig
+  ansible.builtin.copy:
+    dest: "{{ ansible_env.HOME }}/.config/systemd/user/schedules-sync.service.d/exporter-feed.conf"
+    mode: "0644"
+    content: |
+      # Written by home-config roles/fleet-worker (tasks/peer.yml).
+      [Service]
+      Environment=KUBECONFIG=%h/.config/schedules-sync/kubeconfig
+  register: _fleet_home_feed_dropin
+
+- name: Reload the user units for that drop-in
+  when: _fleet_home_feed_dropin is changed
+  ansible.builtin.systemd_service:
+    scope: user
+    daemon_reload: true
+
+- name: Read whether agent-web has its OAuth client
+  ansible.builtin.stat:
+    path: "{{ ansible_env.HOME }}/.config/agent-web/oauth.json"
+  register: fleet_home_oauth
+
+# The unit and its EnvironmentFile come from the private overlay, stowed only
+# once gh is signed in.
+- name: Read whether agent-web's unit and env file are stowed
+  ansible.builtin.stat:
+    path: "{{ ansible_env.HOME }}/{{ item }}"
+  loop:
+    - .config/systemd/user/agent-web.service
+    - .config/agent-web/env
+  register: fleet_home_web_files
+
+# Enabled on every peer, started only where the fleet lease is held: fleet-lease renew starts it
+# on the holder, and its ExecCondition skips a start anywhere else. On start, agent-web-record
+# points the Endpoints agents/agents at this machine with the kubeconfig above.
+- name: Enable agent-web
+  when:
+    - fleet_home_oauth.stat.exists
+    - fleet_home_web_files.results | rejectattr('stat.exists') | list | length == 0
+  ansible.builtin.systemd_service:
+    name: agent-web.service
+    scope: user
+    enabled: true
+    # A rebuilt binary reaches the running service only through a restart.
+    state: "{{ 'restarted' if _fleet_home_web is changed else omit }}"
+    daemon_reload: true
+
+- name: Collect what only the human can do for this peer
+  ansible.builtin.set_fact:
+    fleet_home_left: >-
+      {{ ([] if fleet_home_oauth.stat.exists else
+          ['write ~/.config/agent-web/oauth.json (0600) from rbw item agent-web-oauth-client, then re-run'])
+         + ([] if fleet_home_web_files.results | rejectattr('stat.exists') | list | length == 0 else
+          ['stow the private overlay (gh auth login, then re-run): agent-web needs its unit and ~/.config/agent-web/env'])
+         + ([] if _fleet_home_notes_bin.stat.exists else
+          ['notes is not installed (agent-queue files and closes no board row without it): stow the private overlay, then re-run; if it is stowed, run notes-bootstrap --build-only and read its WARN']) }}

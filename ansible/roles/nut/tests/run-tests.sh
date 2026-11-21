@@ -46,17 +46,24 @@ OUT=/tmp/nut-replay
 LOG=$OUT/syslog
 failures=0
 
+# CI job containers on one runner pod share its network, so two replays at once
+# both bind 127.0.0.1:3493 and one reads the other's UPS. Each run takes a free port.
+port_free() { ! (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
+for _ in $(seq 20); do PORT=$((20000 + RANDOM % 20000)); port_free "$PORT" && break; done
+port_free "$PORT" || { echo "no free port for upsd" >&2; exit 2; }
+UPS="cyberpower@localhost:$PORT"
+
 render() {  # render <template> <dest>
-    python3 - "$ROLE/templates/$1" "$2" "$SETTLE" "$FINALDELAY" <<'EOF'
+    python3 - "$ROLE/templates/$1" "$2" "$SETTLE" "$FINALDELAY" "$PORT" <<'EOF'
 import sys, jinja2
-src, dest, settle, finaldelay = sys.argv[1:]
+src, dest, settle, finaldelay, port = sys.argv[1:]
 env = jinja2.Environment(keep_trailing_newline=True, undefined=jinja2.StrictUndefined)
 text = env.from_string(open(src).read()).render(
     ansible_managed="rendered by tests/run-tests.sh", inventory_hostname="replay",
     ansible_host="127.0.0.1", ansible_os_family="Debian", nut_role="server",
     nut_ups_name="cyberpower", nut_upsmon_user="upsmon",
     nut_upsmon_password="replay-test-password", nut_listen_address="127.0.0.1",
-    nut_listen_port=3493, nut_onbatt_settle_seconds=int(settle),
+    nut_listen_port=int(port), nut_onbatt_settle_seconds=int(settle),
     nut_primary_finaldelay=int(finaldelay), nut_ntfy_url="http://127.0.0.1:9/none",
     nut_confdir="/etc/nut")
 open(dest, "w").write(text)
@@ -84,6 +91,7 @@ setup() {  # setup <case> <seq text> [extra upssched.conf line]
         render "$t.j2" "/etc/nut/$t"
     done
     render upsmon.server.conf.j2 /etc/nut/upsmon.conf
+    grep -q "^MONITOR $UPS " /etc/nut/upsmon.conf || return 1
     [ -n "${3:-}" ] && echo "$3" >> /etc/nut/upssched.conf
     # ntfy is not reachable here; the page is recorded instead.
     printf '#!/bin/sh\nlogger -t nut-page "page: $1"\n' > /etc/nut/ntfy-page.sh
@@ -96,8 +104,8 @@ setup() {  # setup <case> <seq text> [extra upssched.conf line]
     chmod 0755 /sbin/shutdown
     "$NUTBIN/dummy-ups" -a cyberpower -u root >/dev/null 2>&1 &
     wait_for "driver up" 20 test -S /run/nut/dummy-ups-cyberpower || return 1
-    upsd -u root >/dev/null 2>&1
-    wait_for "upsd up" 20 upsc cyberpower@localhost ups.status || return 1
+    upsd -u root >/dev/null 2>&1 || return 1
+    wait_for "upsd up" 20 upsc "$UPS" ups.status || return 1
     upsmon >/dev/null 2>&1
     echo "-- $1"
 }
@@ -114,7 +122,7 @@ wait_for() {  # wait_for <what> <timeout s> <command...>: true once command succ
 }
 
 logged() { grep -q -- "$1" "$LOG"; }
-fsd_set() { upsc cyberpower@localhost ups.status 2>/dev/null | grep -qw FSD; }
+fsd_set() { upsc "$UPS" ups.status 2>/dev/null | grep -qw FSD; }
 shutdown_ran() { [ -f "$OUT/shutdown-called" ]; }
 
 pass() { echo "   ok: $1"; }

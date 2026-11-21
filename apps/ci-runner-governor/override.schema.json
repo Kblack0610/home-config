@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ci-runner-governor-override",
+  "title": "ConfigMap monitoring/ci-runner-governor-override, data decoded",
+  "description": "Each data key is <host>.<family> and holds one JSON object as a string; this schema is the object form, each value parsed. One family per writer, written only with kubectl patch --type merge on its own key. governor.py reads every key through this file (conforms()), and `governor.py check-override <key> <value>` is how a writer's test checks what it writes. docs/runbooks/unity-ci-host.md, The override ConfigMap.",
+  "type": "object",
+  "propertyNames": {"pattern": "^[A-Za-z0-9_-]+\\.(power|slots|reserve)$"},
+  "patternProperties": {
+    "\\.power$": {"$ref": "#/$defs/power"},
+    "\\.slots$": {"$ref": "#/$defs/slots"},
+    "\\.reserve$": {"$ref": "#/$defs/reserve"}
+  },
+  "$defs": {
+    "power": {
+      "description": "agent-web's Governor buttons: hold a powered host on or off until an epoch. An on is held to override_on_max_hours from the cycle the governor first sees it.",
+      "type": "object",
+      "required": ["action", "until"],
+      "additionalProperties": false,
+      "properties": {
+        "action": {"enum": ["on", "off"]},
+        "until": {"type": "number"}
+      }
+    },
+    "slots": {
+      "description": "machine-mode's pin: the host's admitted slots, its admitted local seats when local is set (a host with local_seats), and who set it. The one family with no end, since a workstation mode stands until the next switch.",
+      "type": "object",
+      "required": ["slots", "by"],
+      "additionalProperties": false,
+      "properties": {
+        "slots": {"type": "integer", "minimum": 0},
+        "local": {"type": "integer", "minimum": 0},
+        "by": {"type": "string"}
+      }
+    },
+    "reserve": {
+      "description": "machine-mode release-lane: pins the host to 0 until an epoch, over its slots pin.",
+      "type": "object",
+      "required": ["until"],
+      "additionalProperties": false,
+      "properties": {
+        "until": {"type": "number"}
+      }
+    }
+  }
+}

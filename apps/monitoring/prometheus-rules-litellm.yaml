@@ -105,9 +105,25 @@ spec:
 
         # Proxy-side failure rate across all routes. Catches gateway-level
         # auth/config/database problems that aren't tied to a single upstream.
+        # A budget refusal is spend policy working, so neither failure ratio
+        # counts it: a key or team budget (BudgetExceededError; key budgets
+        # have their own alerts above and lazer-pool runs out by design), and
+        # a Go route's own 5h deployment budget (config.yaml max_budget and
+        # budget_duration), which the router raises as a ValueError "No
+        # deployments available - crossed budget" with no status. Only the
+        # go (...) routes carry a deployment budget; in the 30 days to
+        # 2026-11-19 every ValueError was that refusal on go (glm-5.3) (ar-3488).
+        # The metric carries no message, so any other ValueError on a Go route
+        # is skipped too: a Go upstream fault raises its own class
+        # (RateLimitError, APIError) and still counts, and a refused request
+        # stays in the denominator, as a BudgetExceededError does.
         - alert: LiteLLMHighFailureRate
           expr: |
-            sum(rate(litellm_proxy_failed_requests_metric_total[10m]))
+            sum(
+              rate(litellm_proxy_failed_requests_metric_total{exception_class!="BudgetExceededError"}[10m])
+              unless
+              rate(litellm_proxy_failed_requests_metric_total{exception_class="ValueError", requested_model=~"go \\(.+\\)"}[10m])
+            )
             /
             clamp_min(sum(rate(litellm_proxy_total_requests_metric_total[10m])), 0.001)
             > 0.10
@@ -120,15 +136,19 @@ spec:
             summary: "LiteLLM proxy failure rate > 10% for 10m"
             description: "Across all virtual keys and models, {{ humanizePercentage $value }} of requests are failing. Check `kubectl -n ai-gateway logs deploy/litellm` for auth, DB, or upstream errors."
 
-        # The same ratio per requested route: a quota-capped route (the OpenCode
-        # Go routes refuse past their plan window) failing while the rest are
-        # fine, which the all-routes ratio drowns. The volume floor keeps one
-        # failed probe on an idle route from firing it; a sparse route that is
-        # fully down is LiteLLMUpstreamUnhealthy's job.
+        # The same ratio per requested route: one route failing while the rest
+        # are fine, which the all-routes ratio drowns. A Go route past its 5h
+        # window is its deployment budget refusing, which does not count. The
+        # volume floor keeps one failed probe on an idle route from firing it;
+        # a sparse route that is fully down is LiteLLMUpstreamUnhealthy's job.
         - alert: LiteLLMRouteHighFailureRate
           expr: |
             (
-              sum by (requested_model) (rate(litellm_proxy_failed_requests_metric_total[10m]))
+              sum by (requested_model) (
+                rate(litellm_proxy_failed_requests_metric_total{exception_class!="BudgetExceededError"}[10m])
+                unless
+                rate(litellm_proxy_failed_requests_metric_total{exception_class="ValueError", requested_model=~"go \\(.+\\)"}[10m])
+              )
               /
               clamp_min(sum by (requested_model) (rate(litellm_proxy_total_requests_metric_total[10m])), 0.001)
               > 0.10

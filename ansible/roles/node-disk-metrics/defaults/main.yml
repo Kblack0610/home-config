@@ -2,3 +2,5 @@
 # node-exporter reads this directory (prometheus-node-exporter.extraArgs in
 # apps/monitoring/helm-values.yaml, which mounts it from the host).
 node_disk_metrics_dir: /var/lib/node-exporter-textfile
+# Who owns the directory (group_vars/all/k3s.yml: the fleet user on a fleet worker, else root).
+node_disk_metrics_owner: "{{ k3s_textfile_owner }}"

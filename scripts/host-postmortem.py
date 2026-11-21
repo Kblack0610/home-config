@@ -17,7 +17,9 @@ after the time:
   scripts/host-postmortem.py hp-victus 2026-11-13T23:30Z
   scripts/host-postmortem.py razer-laptop now --before 2h
 
-Hosts are the `host` names of cc:host_instance, the same names as the inventory. Stdlib only.
+A host is its inventory name (pi5-master, cachyos-x8664-main) or its cc:host_instance `host`,
+which is also its Loki journal `host` (raspberrypi, workstation); host_inventory.host_instance
+maps one to the other.
 PROMETHEUS_URL overrides https://prometheus.kblab.me (7 days of retention). Loki is read
 through the home-k3s API server proxy with kubectl.
 
@@ -29,14 +31,19 @@ import argparse
 import datetime as dt
 import json
 import os
+import re
 import subprocess
 import sys
 import urllib.parse
 import urllib.request
+from pathlib import Path
+
+from host_inventory import host_instance, load_inventory
 
 PROM = os.environ.get("PROMETHEUS_URL", "https://prometheus.kblab.me").rstrip("/")
 LOKI = "/api/v1/namespaces/monitoring/services/loki:3100/proxy"
 KUBE_CONTEXT = "home-k3s"
+INVENTORY = Path(__file__).resolve().parent.parent / "ansible/inventory.yml"
 RULE_GROUP = "host-kernel-faults"
 NETCONSOLE_RECEIVER = "kblack0610@192.168.1.20"  # pi5-master, roles/netconsole-receiver
 STEP = 300
@@ -105,10 +112,14 @@ def parse_span(s):
 
 
 def instance_of(host, at):
-    for r in prom("query", query="cc:host_instance", time=at.timestamp()):
-        if r["metric"].get("host") == host:
-            return r["metric"]["instance"]
-    sys.exit(f"FAIL: no cc:host_instance series for host {host!r} at {utc(at)}")
+    """(cc:host_instance host, instance) for an inventory name or a cc:host_instance host."""
+    known = {r["metric"]["host"]: r["metric"]["instance"]
+             for r in prom("query", query="cc:host_instance", time=at.timestamp())}
+    hosts, _ = load_inventory(INVENTORY)
+    found = host_instance(host, hosts.get(host), known)
+    if found is None:
+        sys.exit(f"FAIL: no cc:host_instance series for host {host!r} at {utc(at)}, by name or inventory address")
+    return found
 
 
 def metrics_table(inst, start, end):
@@ -138,12 +149,19 @@ def fault_rules():
     rules = [r for g in groups if g["name"] == RULE_GROUP for r in g["rules"]]
     if not rules:
         sys.exit(f"FAIL: Loki has no rule group {RULE_GROUP}")
-    out = []
-    for r in rules:
-        q = r["query"]
-        regex = q[q.index('|~ "') + 4:q.index('"[')]
-        out.append((r["name"], regex.encode().decode("unicode_escape")))
-    return out
+    return [(r["name"], line_filter_regex(r["name"], r["query"])) for r in rules]
+
+
+def line_filter_regex(name, query):
+    """The regex a rule's first line filter matches: `|~ "re"` as written, `|= "text"` escaped.
+
+    A double-quoted LogQL string takes Go escapes, read here as JSON's; a backtick one is raw.
+    """
+    m = re.search(r'\|([~=])\s*(?:"((?:[^"\\]|\\.)*)"|`([^`]*)`)', query)
+    if not m:
+        sys.exit(f"FAIL: rule {name} in {RULE_GROUP} has no |~ or |= line filter: {query}")
+    text = json.loads(f'"{m.group(2)}"') if m.group(3) is None else m.group(3)
+    return text if m.group(1) == "~" else re.escape(text)
 
 
 def kernel_faults(host, start, end):
@@ -185,18 +203,18 @@ def netconsole(inst, start, end):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("host", help="inventory host name, e.g. hp-victus")
+    ap.add_argument("host", help="inventory name or cc:host_instance host, e.g. pi5-master or raspberrypi")
     ap.add_argument("time", help="ISO time (2026-11-13T23:30Z; no zone means local) or 'now'")
     ap.add_argument("--before", default="60m", help="window before the time (e.g. 60m, 2h)")
     ap.add_argument("--after", default="15m", help="window after the time")
     a = ap.parse_args()
     at = parse_time(a.time).astimezone(dt.timezone.utc)
     start, end = at - parse_span(a.before), at + parse_span(a.after)
-    inst = instance_of(a.host, start)
-    print(f"{a.host} ({inst}), {utc(start)} to {utc(end)}\n")
+    node, inst = instance_of(a.host, start)
+    print(f"{a.host} (host {node}, {inst}), {utc(start)} to {utc(end)}\n")
     metrics_table(inst, start, end)
-    kernel_faults(a.host, start, end)
-    last_shipped(a.host, start, end)
+    kernel_faults(node, start, end)
+    last_shipped(node, start, end)
     netconsole(inst, start.replace(tzinfo=None), end.replace(tzinfo=None))
 
 

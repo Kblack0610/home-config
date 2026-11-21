@@ -31,7 +31,7 @@ pxe-server start
 
 Run `install.sh` and `prepare` from the main checkout (`~/dev/home/home-config`): the images are gitignored, so a worktree has none.
 
-The menu defaults to local boot after 10 seconds, so a machine left on network boot never reinstalls itself. To install, pick a profile; for a k3s node pick **[4] Cluster**. The install wipes the largest internal disk.
+The menu defaults to local boot after 10 seconds, so a machine left on network boot never reinstalls itself. To install, pick a profile; for a k3s node pick **[4] Cluster**. The install wipes the largest internal disk. Joining the new host to k3s and CI: [docs/runbooks/bare-metal-host.md](../../docs/runbooks/bare-metal-host.md).
 
 ## Commands
 

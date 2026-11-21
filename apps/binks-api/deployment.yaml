@@ -119,21 +119,29 @@ spec:
             # this (UTC day); subscribers pass. Owner's pick 2026-11-14, ask 4pazNg.
             - name: DAILY_SPEND_CEILING_USD
               value: '2'
+            # Image generation (platform #1585, images plan P2): the gateway route
+            # signed-in users' generate_image tool calls. binks-issuer's models list
+            # it (apps/litellm/README.md). Empty turns the tool off. Ignored by
+            # images built before #1585 (binks-api v1.12.0 and older).
+            - name: IMAGE_MODEL
+              value: 'image (glm-image)'
             # Shared demos: Share in a chat preview publishes the page to
             # https://play.kblack.dev/p/<id> (ingress.yaml, binks-demos). This
             # host answers /p/<id> only and sends a CSP sandbox header on every
             # response (platform apps/binks/api/README.md, Shareable demos).
-            # Off until the owner answers the asks filed 2026-11-14: whether
-            # demos may live on kblack.dev at all, and who may publish
-            # (plus = Binks Plus subscribers only, 'all' = every signed-in
-            # user). DEMO_TTL_DAYS defaults to 30. Off, the host still answers
-            # 404 with the sandbox header, so the route and Gatus check work.
+            # On from the binks tag that carries platform #1567 and #1590 (the
+            # human's go, 2026-11-17: demos on play.kblack.dev, every signed-in
+            # user may publish, plus = Binks Plus only). DEMO_TTL_DAYS defaults
+            # to 30. Set PUBLISH_ENABLED back to 'false' to turn publishing off:
+            # the host then answers 404 with the sandbox header, so the route and
+            # Gatus check keep working. The fleet publishes as its own user with
+            # a bk_pat_ token (apps/binks-api/README.md, "Binks demo token").
             - name: PUBLISH_ENABLED
-              value: 'false'
+              value: 'true'
             - name: PUBLISH_HOST
               value: play.kblack.dev
             - name: DEMO_PUBLISH_TIER
-              value: plus
+              value: all
             # Outside clients: the OAuth server, API tokens, consent page and /mcp
             # (platform apps/binks/api/README.md, Client auth). It is the kill
             # switch for all of them. Off until the owner releases a binks-api tag
@@ -141,6 +149,8 @@ spec:
             # on binks.chat; CLIENT_TOKEN_SECRET is already in binks-api-secret.
             - name: MCP_ENABLED
               value: 'false'
+          # binks-api-secret carries every secret key, CF_EDGE_SECRET included
+          # (README, Secrets): production refuses to start without it.
           envFrom:
             - secretRef:
                 name: binks-api-secret

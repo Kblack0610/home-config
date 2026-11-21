@@ -47,19 +47,21 @@ kustomize build clusters/home-k3s >/dev/null
 **Test.** CI is [`.forgejo/workflows/checks.yaml`](./.forgejo/workflows/checks.yaml). The Python checks need only the standard library:
 
 ```bash
-python3 scripts/check-fleet-roster.py
-python3 scripts/check-runner-roster.py
+python3 scripts/render-fleet-pulse.py --check
+python3 scripts/render-ci-topology.py --check
 python3 scripts/check-ha-packages.py
 python3 scripts/check-secret-store.py
 python3 apps/github-runner-exporter/test_exporter.py
 python3 apps/ci-runner-governor/test_governor.py
 python3 scripts/test_eeg_review.py
 apps/zomboid/tests/run.sh
-sh ansible/roles/linux-ci-host/files/test-ci-disk-prune.sh
+sh ansible/roles/ci-host/files/test-ci-disk-prune.sh
 scripts/test-prometheus-rules.sh   # needs promtool and yq
 ```
 
 What each check guards, and the rules behind them, are in [docs/standards.md](./docs/standards.md).
+
+**Before the push.** [`.githooks/pre-push`](./.githooks/pre-push) runs the offline steps of `checks.yaml` that the pushed paths touch and refuses the push on a red, naming the step. The steps and their paths are the rows of [`.githooks/pre-push-steps.tsv`](./.githooks/pre-push-steps.tsv); `scripts/check-prepush-steps.py` fails CI when the table and `checks.yaml` drift, and `scripts/test-prepush-hook.sh` plants a red and shows the refusal. A step whose tool is not installed (kustomize, promtool, alertmanager) is skipped with a line saying so, and CI still runs it. The dotfiles global hook dispatcher switches it on in every clone; in a clone without one, run `git config core.hooksPath .githooks`. Rule: `~/.local/src/docs/ci.md` speed lever 3. Never push with `--no-verify`.
 
 ## Common Maintainer Workflows
 

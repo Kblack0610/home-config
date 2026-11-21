@@ -1,5 +1,7 @@
-# SMART disk health metrics from the NAS host (asus-laptop)
-# smartctl_exporter runs as a systemd unit on the NAS, exposing metrics on port 9633
+# SMART disk health from every bare-metal Linux host. prometheus-smartctl-exporter runs as
+# a systemd unit on each one (ansible role disk-health) on port 9633. Add a host here when
+# it joins that play. Out of scope: Pi SD cards (no SMART), the 8TB USB drive (its bridge
+# blocks SMART), mac-mini and the Windows boxes (no exporter yet).
 apiVersion: v1
 kind: Service
 metadata:
@@ -26,6 +28,19 @@ metadata:
 subsets:
   - addresses:
       - ip: 192.168.1.152
+        hostname: asus-laptop
+      - ip: 192.168.1.243
+        hostname: hp-victus
+      - ip: 192.168.1.26
+        hostname: razer-laptop
+      - ip: 192.168.1.28
+        hostname: ms-a2
+      - ip: 192.168.1.19
+        hostname: deskslim-1
+      - ip: 192.168.1.29
+        hostname: deskslim-2
+      - ip: 192.168.1.2
+        hostname: workstation
     ports:
       - name: metrics
         port: 9633
@@ -42,6 +57,12 @@ spec:
     - port: metrics
       interval: 60s
       scrapeTimeout: 30s
+      relabelings:
+        # `host` = the address's hostname above (the inventory name), as in
+        # external-standalone-nodes.yaml, so alerts and the dashboard name the machine.
+        - sourceLabels: [__meta_kubernetes_endpoint_hostname]
+          regex: (.+)
+          targetLabel: host
   selector:
     matchLabels:
       app.kubernetes.io/name: smartctl-exporter

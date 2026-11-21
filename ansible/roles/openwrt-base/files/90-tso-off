@@ -1,0 +1,8 @@
+# Managed by ansible (roles/openwrt-base). Hardware TSO on mtk_soc_eth corrupts forwarded
+# TCP and stamps a valid checksum on the result (hc-647); features reset at boot, so this
+# turns it off again on every ifup. The device list comes from the role.
+[ "$ACTION" = ifup ] || exit 0
+[ -x /usr/sbin/ethtool ] || exit 0
+for dev in $(cat /etc/tso-off-devices 2>/dev/null); do
+	ethtool -K "$dev" tso off 2>/dev/null
+done

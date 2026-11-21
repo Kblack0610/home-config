@@ -22,11 +22,8 @@ spec:
         # paged on the thinkcentre power outage. iot-pi-nodes (sleepy Pi Zeros)
         # are intentionally excluded to avoid false pages.
         - alert: NodeDown
-          # AWS hosts stop between jobs. Unknown power state remains a failure.
           expr: >-
-            (up{job=~"node-exporter|mac-nodes|standalone-nodes"} == 0)
-            or ((up{job="aws-ci-nodes"} == 0)
-              unless on (host) max by (host) (ci_governor_power_state{state=~"stopped|starting|stopping"} == 1))
+            up{job=~"node-exporter|mac-nodes|standalone-nodes"} == 0
           for: 2m
           labels:
             severity: critical
@@ -57,9 +54,8 @@ spec:
         # not: if the pi3 target disappeared from Prometheus entirely, NodeDown
         # would stop matching and nothing would say so. That box runs the LAN's
         # only DNS resolver, so it is the worst one to go quietly unmonitored.
-        # AWS targets have their own job, so losing that job needs the same check.
         - alert: StandaloneNodeExporterAbsent
-          expr: absent(up{job="standalone-nodes"}) or absent(up{job="aws-ci-nodes"})
+          expr: absent(up{job="standalone-nodes"})
           for: 15m
           labels:
             severity: warning
@@ -189,33 +185,40 @@ spec:
         # 2026-11-13 hp-victus spent 29 min above 90C, peaked at 100C and went
         # NotReady while those rules sat pending. Replay, 7 days to 2026-11-13:
         # this one 1165 min on asus-laptop and 660 on hp-victus, the old one 0.
-        # Not the workstation, for the reason under NodeCpuCritical.
+        # fleet: fix since 2026-11-17, when the human asked that a hot machine be
+        # red: the lever is roles/thermal-cap (the fleet's thermal standard,
+        # inventory.yml thermal_capped), so an agent can fix it from this repo.
+        # The workstation counts too: it was left out as "a 7900X at 95C by
+        # design", but it is a 9950X3D now and read a median 96.25C, p90 97C and
+        # a peak of 106.25C over 7 days to 2026-11-17, past AMD's 95C Tjmax.
         - alert: NodeCpuHot
           expr: >-
-            max_over_time(instance:node_cpu_package_temp:celsius{instance!="192.168.1.2:9100"}[10m]) > 90
+            max_over_time(instance:node_cpu_package_temp:celsius[10m]) > 90
           for: 10m
           labels:
             severity: warning
-            fleet: none  # heat: the human decides (fleet-thermal, agentctl SENTINEL.md)
+            fleet: fix
             category: node-health
           annotations:
             summary: "CPU hot on {{ $labels.instance }} (peaks of {{ $value }}C for 10m)"
             description: >-
               The CPU package on {{ $labels.instance }} has peaked above 90C in
-              every 10m window for 10m. Run scripts/host-headroom.py on it and
-              move work off; on a laptop, check thermal-cap.service applied after
-              the last boot (systemctl status thermal-cap) and lower the cap in
-              inventory.yml (thermal_capped) if it did.
-        # Not the workstation: a 7900X sits at 95C under load by design, which paged 33
-        # times in 2 days to 2026-10-31, and the fleet-thermal watch already owns it.
-        # Replay, 7 days to 2026-11-13: 90 min on hp-victus, 0 elsewhere.
+              every 10m window for 10m. Check thermal-cap.service applied after
+              the last boot (systemctl status thermal-cap) and the host is in
+              inventory.yml thermal_capped; if it is capped and still hot, lower
+              its cap (ansible/roles/thermal-cap/README.md). The workstation's
+              apply needs the human's sudo: file the README's command as an ask.
+              Run scripts/host-headroom.py on it before moving work off.
+        # The workstation counts here too, for the reason under NodeCpuHot.
+        # Replay, 7 days to 2026-11-13, while the workstation was left out: 90 min
+        # on hp-victus, 0 elsewhere.
         - alert: NodeCpuCritical
           expr: >-
-            max_over_time(instance:node_cpu_package_temp:celsius{instance!="192.168.1.2:9100"}[5m]) > 95
+            max_over_time(instance:node_cpu_package_temp:celsius[5m]) > 95
           for: 5m
           labels:
             severity: critical
-            fleet: none  # heat: the human decides (fleet-thermal, agentctl SENTINEL.md)
+            fleet: none  # NodeCpuHot (fleet: fix, above 90C) already sends the same hot host to an agent
             category: node-health
           annotations:
             summary: "CPU at {{ $value }}C on {{ $labels.instance }}"
@@ -338,6 +341,22 @@ spec:
               ansible-playbook playbooks/site.yml --limit <its inventory host> --tags k3s
               (the server first if the pin moved; roles/k3s-agent README). A Pi's node
               name is not its inventory name; match it by IP in inventory.yml.
+        # A house power cut reboots many hosts at once, and each host alone looks like a
+        # restart. 2026-11-04 19:35 and 2026-11-17 01:40 both went unpaged. Sleepy Pi Zeros
+        # (iot-pi-nodes) wake and sleep by design, so they are left out.
+        - alert: HostPowerEvent
+          expr: >-
+            count(changes(node_boot_time_seconds{job=~"node-exporter|mac-nodes|standalone-nodes"}[5m]) > 0) >= 3
+          labels:
+            severity: critical
+            fleet: none  # a power cut or UPS fault: the human checks the UPS and the breaker (docs/nut-ups.md)
+            category: node-health
+          annotations:
+            summary: "Power event: {{ $value }} hosts rebooted within 5m"
+            description: >-
+              {{ $value }} hosts' node_boot_time moved in the last 5m. Several
+              reboots at once point at power, not at one host. Check the UPS
+              (docs/nut-ups.md) and which hosts came back: node_boot_time_seconds.
     - name: homelab-node-health.recording
       rules:
         - record: instance:node_cpu_package_temp:celsius

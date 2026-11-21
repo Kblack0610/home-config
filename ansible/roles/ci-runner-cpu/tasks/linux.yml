@@ -3,8 +3,7 @@
   ansible.builtin.file:
     path: "{{ ci_runner_cpu_linux_textfile_dir }}"
     state: directory
-    owner: root
-    group: root
+    owner: "{{ ci_runner_cpu_linux_textfile_owner }}"
     mode: "0755"
 
 - name: Install the script
@@ -48,6 +47,31 @@
 
         [Install]
         WantedBy=timers.target
+    - name: ci-runner-disk.service
+      content: |
+        # Managed by ansible (roles/ci-runner-cpu). Do not edit by hand.
+        [Unit]
+        Description=Export the disk each CI runner's home holds for node-exporter
+
+        [Service]
+        Type=oneshot
+        Nice=19
+        IOSchedulingClass=idle
+        TimeoutStartSec=30min
+        ExecStart=/usr/local/bin/ci-runner-cpu --disk {{ ci_runner_cpu_linux_textfile_dir }}
+    - name: ci-runner-disk.timer
+      content: |
+        # Managed by ansible (roles/ci-runner-cpu). Do not edit by hand.
+        # A timer because disk use has no event to wait on; hourly, like the CI disk prune.
+        [Unit]
+        Description=Export CI runner disk every {{ ci_runner_disk_interval }}
+
+        [Timer]
+        OnBootSec=5min
+        OnUnitActiveSec={{ ci_runner_disk_interval }}
+
+        [Install]
+        WantedBy=timers.target
   loop_control:
     label: "{{ item.name }}"
   notify: Reload systemd for ci-runner-cpu
@@ -55,15 +79,25 @@
 - name: Apply unit changes before starting the timer
   ansible.builtin.meta: flush_handlers
 
-- name: Enable the timer
+- name: Enable the timers
   ansible.builtin.systemd:
-    name: ci-runner-cpu.timer
+    name: "{{ item }}"
     enabled: true
     state: started
+  loop: [ci-runner-cpu.timer, ci-runner-disk.timer]
   ignore_errors: "{{ ansible_check_mode }}"
 
-- name: Write the first reading now
+- name: Look for a disk reading
+  ansible.builtin.stat:
+    path: "{{ ci_runner_cpu_linux_textfile_dir }}/ci_runner_disk.prom"
+  register: ci_runner_disk_prom
+
+# The disk run is a du of every runner home, so an apply starts it only on a host
+# that has no reading yet; after that the timer keeps it.
+- name: Write the first readings now
   ansible.builtin.systemd:
-    name: ci-runner-cpu.service
+    name: "{{ item }}"
     state: started
+    no_block: "{{ item == 'ci-runner-disk.service' }}"
+  loop: "{{ ['ci-runner-cpu.service'] + ([] if ci_runner_disk_prom.stat.exists else ['ci-runner-disk.service']) }}"
   when: not ansible_check_mode

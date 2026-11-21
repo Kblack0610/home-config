@@ -1,0 +1,77 @@
+---
+# The headless harnesses a worker runs besides claude (fleet_harnesses in inventory.yml), each
+# placed only while `fleet-dispatch harness-ready` on the worker reads it ready. An opencode
+# harness (nim, ocfree, opencode-go) runs in its lane sandbox, so it wants opencode, the harness
+# map, its eval config and its lane sandbox profile (all three from the private overlay), srt with
+# bwrap and socat, and its gateway key file. codex runs on the workstation only, never on a worker
+# (inventory fleet_harnesses). bwrap, socat and npm come with fleet_worker_packages.
+# Runbook: docs/runbooks/fleet-worker.md, "Headless harnesses".
+# Everything read from the controller is optional: what is missing is reported, never fatal.
+
+# One pin, the controller's own (dotfiles packages.conf NPM_PACKAGES), not the worker's checkout,
+# which may predate it until dotfiles-autopull runs.
+- name: Read the srt pin and the harness map on the controller
+  ansible.builtin.set_fact:
+    fleet_harness_srt_pin: >-
+      {{ lookup('ansible.builtin.file', lookup('env', 'HOME') ~ '/.dotfiles/.local/src/installation_scripts/packages.conf', errors='ignore')
+         | default('', true) | regex_search('sandbox-runtime@[0-9.]+') | default('', true) }}
+    fleet_harness_map: >-
+      {{ lookup('ansible.builtin.file', lookup('env', 'HOME') ~ '/.config/agentctl/harnesses.json', errors='ignore')
+         | default('{}', true) | from_json }}
+
+# Per user, into ~/.local: fleet-dispatch's ssh puts ~/.local/bin first on PATH (dotfiles fleet-hosts.sh).
+- name: Read the installed srt version
+  when: fleet_harness_srt_pin | length > 0
+  ansible.builtin.command:
+    argv: [cat, "{{ ansible_env.HOME }}/.local/lib/node_modules/@anthropic-ai/sandbox-runtime/package.json"]
+  register: fleet_harness_srt_installed
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Install srt at that pin
+  when:
+    - fleet_harness_srt_pin | length > 0
+    - (fleet_harness_srt_installed.stdout | default('{}', true) | from_json).version | default('') != fleet_harness_srt_pin.split('@')[1]
+  ansible.builtin.command:
+    argv: [npm, install, -g, --prefix, "{{ ansible_env.HOME }}/.local", "@anthropic-ai/{{ fleet_harness_srt_pin }}"]
+  changed_when: true
+
+# Each opencode harness's key file is its key_file, else the gateway's, at the same path under $HOME
+# on both machines, as fleet_repos dests are. A name the map lacks is reported below.
+- name: Read each harness's key file from the controller's harness map
+  ansible.builtin.set_fact:
+    fleet_harness_keys: >-
+      {{ fleet_harnesses | select('in', _h)
+         | map('extract', _h) | selectattr('launcher', 'defined')
+         | selectattr('launcher', 'eq', 'opencode') | map(attribute='key_file', default=None)
+         | map('default', (fleet_harness_map.gateway | default({})).key_file | default(''), true)
+         | select | map('regex_replace', '^~/', '') | unique | list }}
+  vars:
+    _h: "{{ fleet_harness_map.harnesses | default({}) }}"
+
+- name: Make the key files' directories
+  ansible.builtin.file:
+    path: "{{ ansible_env.HOME }}/{{ item }}"
+    state: directory
+  loop: "{{ fleet_harness_keys | map('dirname') | unique | list }}"
+
+# A secret, so never logged; a key the controller lacks is reported, not fatal.
+- name: Copy each gateway key file from the controller
+  when: (lookup('env', 'HOME') ~ '/' ~ item) is file
+  ansible.builtin.copy:
+    src: "{{ lookup('env', 'HOME') }}/{{ item }}"
+    dest: "{{ ansible_env.HOME }}/{{ item }}"
+    mode: "0600"
+  loop: "{{ fleet_harness_keys }}"
+  no_log: true
+
+- name: Say what the harnesses still lack
+  ansible.builtin.set_fact:
+    fleet_harness_left: >-
+      {{ ([] if fleet_harness_srt_pin | length > 0 else ['no sandbox-runtime pin in the controller ~/.dotfiles packages.conf, so no srt'])
+         + ([] if fleet_harness_map.harnesses is defined else ['no harness map (~/.config/agentctl/harnesses.json) on the controller, so no key files'])
+         + (fleet_harnesses | reject('in', fleet_harness_map.harnesses | default({}))
+            | map('regex_replace', '^', 'not in the controller harness map: ') | list)
+         + (fleet_harness_keys | map('regex_replace', '^', lookup('env', 'HOME') ~ '/') | reject('file')
+            | map('regex_replace', '^', 'gateway key not on this controller: ') | list) }}

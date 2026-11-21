@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Every CI slot and what it can run, rendered from ansible/inventory.yml by
+# scripts/render-ci-topology.py (CI fails when it is stale). github-runner-exporter
+# and ci-runner-governor mount it; the hashed name rolls both when a slot changes.
+namespace: monitoring
+
+configMapGenerator:
+  - name: ci-topology
+    files:
+      - topology.json

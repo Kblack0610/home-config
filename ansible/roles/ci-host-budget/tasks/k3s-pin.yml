@@ -16,15 +16,17 @@
     mode: "0755"
   when: k3s_cpus | length > 0
 
+# Only k3s values go in this file: any change to it restarts k3s below, so a CI
+# value here (ci_cpus did, until 2026-11-17) restarts k3s on a CI-only change.
 - name: Pin k3s pods to k3s_cpus
   ansible.builtin.copy:
     dest: /etc/rancher/k3s/config.yaml.d/50-ci-host-budget.yaml
     content: |
-      # Managed by ansible (ci-host-budget). CPUs {{ ci_cpus }} are CI's, so pods
-      # run on, and the node offers, only k3s_cpus ({{ k3s_cpus }}).
+      # Managed by ansible (ci-host-budget). Pods run on, and the node offers, only
+      # k3s_cpus ({{ k3s_cpus }}); the other CPUs are CI's and the OS's.
       kubelet-arg+:
         - cpu-manager-policy=static
-        - reserved-cpus={{ range(ansible_facts.processor_nproc) | difference(_ci_cpu_sets.k3s) | join(',') }}
+        - reserved-cpus={{ range(ansible_facts.processor_vcpus) | difference(_ci_cpu_sets.k3s) | join(',') }}
         - cpu-manager-policy-options=strict-cpu-reservation=true
     mode: "0644"
   when: k3s_cpus | length > 0

@@ -9,24 +9,33 @@
 #   cc:overall_status                       2 when any domain is 2, else 0 (warns never colour it), printer left out
 #   cc:agents_topic_live{topic}             1 per agents topic published in 20 min; readers join on it
 #   cc:watch_state{domain,item}             what is not ok inside a domain: 2 down, 1 warn, one row per item
+#   cc:watch_state_raw{domain,item}         the same before a quarantine (cc:watch_quarantined{item}) demotes a down item to warn
 #   cc:red_now{item}                        what is red right now, one row per item (dashboard table, hub board, waybar day and health chips)
 #   cc:<name>                               the numbers the tiles print
 #   cc:host_<metric>{host}                  per-machine load for the board's MACHINES rows
 #   cc:host_core_busy_ratio{host,cpu}       each core's busy share, the Infra tab's core strip
 #   cc:runner_cores_busy / _allowed{host,runner}  cores a CI runner's job uses, and its pinned CPUs
+#   cc:runner_mem_bytes / _mem_max_bytes{host,runner}  its working set, and the cap of a cgroup it holds alone
+#   cc:job_kind_cores / _mem{host,runner,kind}  the same two for a busy runner, by the kind of job it runs
+#   cc:runner_disk_bytes / _disk_age_seconds{host,runner}  disk under its home (hourly du), and that reading's age
+#   cc:host_mem_used_bytes / _total_bytes{host}      memory in bytes, the same measure as cc:host_mem_used_ratio
+#   cc:host_disk_avail_bytes / _size_bytes{host}     the emptiest real filesystem, the one the disk ratio reads
+#   cc:host_class_cores / _mem_bytes{host,class}  what each machine's cores and memory are used by: ci, apps, agents, docker, other, free
+#   cc:host_class_reserved_cores / _reserved_mem_bytes{host,class}  what a class holds back (ci cpusets and caps, pod requests, agent_cpus)
+#   cc:host_ns_cores{host,namespace}        the apps class by k3s namespace
+#   cc:host_run_units / _run_units_max{host}  run units its agent sessions hold, and the units it takes (fleet-assess)
+#   cc:host_inventory{host}                 1 for a host with a fresh node inventory: the hosts that have a split
 #   cc:host_local_gate{host,worktree,...}  the workstation's local Unity gates (fleet-assess)
-#   cc:host_local_slots / _busy / _queued{host}          its gate slots, slots held, runs waiting
-#   cc:host_local_open_slots{host}                       the always-open part of its gate slots
 #   cc:host_local_done_24h / _pass_ratio_24h{host}       its gates finished in 24h, and pass / finished
-#   cc:pool_done_24h / _cancelled_24h / _pass_ratio_24h{pool}  jobs each runner pool finished in 24h
-#   cc:pool_slots / _busy / _withheld{pool}  runners that can take a job, those running one, and idle ones the governor withheld
-#   cc:site_slots / _busy{site}             the same slots and busy, local (home LAN, workstation gates included) vs cloud
+#   cc:pool_done_24h / _cancelled_24h / _pass_ratio_24h{pool}  jobs of each kind finished in 24h (pool=<kind>, as ci_runner_job names it)
+#   cc:pool_slots / _busy / _free / _withheld{pool}  runners that can take a job of the kind, runners running a job of it (ci_runner_job), idle ones that could start one now, and idle ones the governor withheld
+#   cc:site_slots / _busy{site}             the same slots and busy, local (home LAN) vs cloud
 #   cc:github_hosted_running                jobs running now on GitHub's own runners
 #
 # Status comes from sentinel watches where one exists (they are the curated alarms that
 # already page), and from metrics where none does (nodes, heartbeats, runner pools).
 # Watch and runner state arrive via agent-mqtt-publish -> mosquitto -> mqtt2prom as
-# mqtt_tripped / mqtt_stale / mqtt_failed / (mqtt_running{topic="agents_<host>_<kind>_<name>"} and on (topic) cc:agents_topic_live).
+# mqtt_tripped / mqtt_stale / mqtt_failed / mqtt_severity_rank (a watch manifest severity, 1 low to 4 urgent) / (mqtt_running{topic="agents_<host>_<kind>_<name>"} and on (topic) cc:agents_topic_live).
 #
 # Each component is `(red-case > 0) or (warn-case > 0) or vector(0)`: the comparison
 # drops a zero-valued series so `or` falls through to the next case, and vector(0)
@@ -61,8 +70,8 @@ spec:
         # Weight 2 is for a user-facing outage (prod, the k3s cluster, CI runners offline) or a dead
         # alert path (pager_undelivered: with it down, no other page arrives; alertmanager_fleet after 2h); every
         # other watch warns in its domain. A runner offline includes m1_playground_mac_online. Work posture
-        # (playground_nightly and the release, train and gate-budget watches, release_drift, release_links,
-        # runner_score, fleet_budget_pace, infra_trickle) warns: it is work to pick up, not an outage. A watch no domain names falls to `other`, where it is down.
+        # (playground_nightly and the release, train and gate-budget watches, release_drift, release_links, release_late,
+        # runner_score, fleet_budget_pace, infra_trickle) warns: it is work to pick up, not an outage. A watch no domain names falls to `other`, where it is down, or warns when its manifest says severity: low.
         # queue_starved warns: dispatch held for account room is load, not an outage, and source_pace
         # already reports it; promote it back to 2 once source_pace has read ok for 7 days (human,
         # 2026-11-12). playground_server_behind is a release lag, not an outage: it warns in ci.
@@ -74,56 +83,76 @@ spec:
         # exit 2) trips the same series and also waits 2h: Sentinel still pages that trip straight to
         # ntfy, so the human hears of it before the chip turns red.
         # Provisional: revisit if a fix lands in under 1h or a red ran past 2h unseen.
-        - record: cc:watch_state
+        - record: cc:watch_state_raw
           labels: {domain: k3s}
           expr: >-
             max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(home_k3s_.+|cluster_janitor_alive)",topic!~"agents_.+_watch_home_k3s_(trivy_criticals|kubeconfig_cert)"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_tripped{topic=~"agents_.+_watch_(home_k3s_trivy_criticals|home_k3s_kubeconfig_cert|forgejo_restore_drill)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(home_k3s_.+|cluster_janitor_alive|forgejo_restore_drill)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
-        - record: cc:watch_state
+        - record: cc:watch_state_raw
           labels: {domain: prod}
           expr: >-
             max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(pmp_.+|prod_mercury_payouts|posthog_prod_guard|binks_key_issue_failed)"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(pmp_.+|prod_mercury_payouts|posthog_prod_guard|binks_key_issue_failed)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
-        - record: cc:watch_state
+        # ci is the runner fleet: runners online, the Unity queue wait and each host's job pass. A project's own CI
+        # (nightly, gates, release train) is the projects domain below, so a red nightly no longer
+        # paints the CI chip amber for days (2026-11-17: ci never green in 7 days).
+        - record: cc:watch_state_raw
           labels: {domain: ci}
           expr: >-
-            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(.+_runners?_online|m1_playground_mac_online)"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_tripped{topic=~"agents_.+_watch_(playground_nightly|playground_main_checks|playground_gate_spread|playground_release_ready|playground_release_runs|playground_train_stuck|playground_server_behind|playground_gate_budget|unity_queue_wait|playloop|dotfiles_gate_budget)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(.+_runners?_online|playground_nightly|playground_main_checks|playground_gate_spread|playground_release_ready|playground_release_runs|playground_train_stuck|playground_server_behind|playground_gate_budget|unity_queue_wait|playloop|dotfiles_gate_budget|m1_playground_mac_online)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
-        - record: cc:watch_state
+            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(.+_runners?_online|m1_playground_mac_online)"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_tripped{topic=~"agents_.+_watch_(unity_queue_wait|ci_host_pass)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(.+_runners?_online|unity_queue_wait|ci_host_pass|m1_playground_mac_online)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
+        - record: cc:watch_state_raw
+          labels: {domain: projects}
+          expr: >-
+            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(playground_nightly|playground_main_checks|playground_gate_spread|playground_release_ready|playground_release_runs|playground_train_stuck|playground_server_behind|playground_gate_budget|playloop|dotfiles_gate_budget|release_late)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(playground_nightly|playground_main_checks|playground_gate_spread|playground_release_ready|playground_release_runs|playground_train_stuck|playground_server_behind|playground_gate_budget|playloop|dotfiles_gate_budget|release_late)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
+        - record: cc:watch_state_raw
           labels: {domain: queue}
           expr: >-
-            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(shepherd_stuck)"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_tripped{topic=~"agents_.+_watch_(queue_starved|heal_flapping|board_chain|board_open|intake_stuck|queue_limit_ends|infra_trickle)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(queue_starved|shepherd_stuck|heal_flapping|board_chain|board_open|intake_stuck|queue_limit_ends|infra_trickle)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
-        - record: cc:watch_state
+            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(shepherd_stuck)"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_tripped{topic=~"agents_.+_watch_(queue_starved|heal_flapping|board_chain|board_open|intake_stuck|queue_limit_ends|infra_trickle|pr_stranded|pr_blocked)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(queue_starved|shepherd_stuck|heal_flapping|board_chain|board_open|intake_stuck|queue_limit_ends|infra_trickle|pr_stranded|pr_blocked)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
+        - record: cc:watch_state_raw
           labels: {domain: machines}
           expr: >-
-            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(fleet_thermal|emotiv_bridge|mac_mini_desktop_grants)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(fleet_thermal|emotiv_bridge|mac_mini_desktop_grants)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
-        - record: cc:watch_state
+            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(fleet_thermal|emotiv_bridge|mac_mini_desktop_grants|mac_mini_signing)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(fleet_thermal|emotiv_bridge|mac_mini_desktop_grants|mac_mini_signing)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
+        - record: cc:watch_state_raw
           labels: {domain: spend}
           expr: >-
             max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(source_pace|gh_actions_budget_pace|fleet_budget_pace|claude_spend_(?:hourly|daily)|claude_account_pace|claude_acct_usage|binks_chat_spend|binks_spend_ceiling|binks_waitlist_on|binks_search_quota|meshy_credits|codex_underuse|queue_cost_export|token_usage_drift)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(source_pace|gh_actions_budget_pace|fleet_budget_pace|claude_spend_(?:hourly|daily)|claude_account_pace|claude_acct_usage|binks_chat_spend|binks_spend_ceiling|binks_waitlist_on|binks_search_quota|meshy_credits|codex_underuse|queue_cost_export|token_usage_drift)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
-        - record: cc:watch_state
+        - record: cc:watch_state_raw
           labels: {domain: platform}
           expr: >-
-            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(pager_undelivered)"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((min_over_time(mqtt_tripped{topic=~"agents_.+_watch_(alertmanager_fleet)"}[2h]) and on (topic) (mqtt_tripped{topic=~"agents_.+_watch_(alertmanager_fleet)"} offset 2h > 0) and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_tripped{topic=~"agents_.+_watch_(alertmanager_fleet|skill_drift|mem0_search_path|deploy_drift|fleet_liveness|release_drift|release_links|provider_status|agent_web_liveness|systemd_user_failed|main_checkout_branch|schedules_fresh|runner_score|lane_sandbox_refusals|claude_startup|pts_bands|platform_dependabot_runtime)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(skill_drift|mem0_search_path|deploy_drift|fleet_liveness|release_drift|release_links|provider_status|pager_undelivered|alertmanager_fleet|agent_web_liveness|systemd_user_failed|main_checkout_branch|schedules_fresh|runner_score|lane_sandbox_refusals|claude_startup|pts_bands|platform_dependabot_runtime)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
-        - record: cc:watch_state
+            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(pager_undelivered)"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((min_over_time(mqtt_tripped{topic=~"agents_.+_watch_(alertmanager_fleet)"}[2h]) and on (topic) (mqtt_tripped{topic=~"agents_.+_watch_(alertmanager_fleet)"} offset 2h > 0) and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_tripped{topic=~"agents_.+_watch_(alertmanager_fleet|skill_drift|mem0_search_path|deploy_drift|fleet_liveness|release_drift|release_links|provider_status|agent_web_liveness|agent_web_slow|systemd_user_failed|main_checkout_branch|schedules_fresh|runner_score|lane_sandbox_refusals|claude_startup|pts_bands|platform_dependabot_runtime)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(skill_drift|mem0_search_path|deploy_drift|fleet_liveness|release_drift|release_links|provider_status|pager_undelivered|alertmanager_fleet|agent_web_liveness|agent_web_slow|systemd_user_failed|main_checkout_branch|schedules_fresh|runner_score|lane_sandbox_refusals|claude_startup|pts_bands|platform_dependabot_runtime)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
+        - record: cc:watch_state_raw
           labels: {domain: llm}
           expr: >-
             max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_(gateway_errors|langfuse_read)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_(gateway_errors|langfuse_read)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)"))
         # Neptune, the 3D printer: its Home Assistant sensor and its watches (down, stale or tripped) warn in
         # their own domain, which cc:overall_status leaves out. It is off most days and rarely used, so it
         # shows on the health hover and the board but never colours the heart (human, 2026-11-12).
-        - record: cc:watch_state
+        - record: cc:watch_state_raw
           labels: {domain: printer}
           expr: >-
             max by (item) (label_replace(((mqtt_tripped{topic=~"agents_hass_conn_neptune_.+"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_hass_conn_(.+)") or label_replace(((mqtt_tripped{topic=~"agents_.+_watch_neptune_.+"} and on (topic) cc:agents_topic_live) > 0) or ((mqtt_stale{topic=~"agents_.+_watch_neptune_.+"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)")) * 0 + 1
         # a watch no domain above claims still counts, so a new manifest is never invisible here.
         # aws_burst_power trips whenever the burst runner runs: it pages on start and stop, and is no fault.
-        - record: cc:watch_state
+        # A tripped watch here is down unless its manifest says severity: low (severity_rank 1, from
+        # agent-mqtt-publish), which warns: a low fyi watch held cc:overall_status red for months (ar-2795).
+        # A watch with no rank published is down, as before.
+        - record: cc:watch_state_raw
           labels: {domain: other}
           expr: >-
-            max by (item) (label_replace(((mqtt_tripped{topic=~"agents_.+_watch_.+",topic!~"agents_.+_watch_(aws_burst_power|neptune_.+)"} and on (topic) cc:agents_topic_live) * 2 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_.+",topic!~"agents_.+_watch_(aws_burst_power|neptune_.+)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)")) unless on (item) cc:watch_state{domain!="other"}
+            max by (item) (label_replace((((mqtt_tripped{topic=~"agents_.+_watch_.+",topic!~"agents_.+_watch_(aws_burst_power|neptune_.+)"} and on (topic) cc:agents_topic_live) * 2 > 0) unless on (topic) (mqtt_severity_rank == 1)) or ((mqtt_tripped{topic=~"agents_.+_watch_.+",topic!~"agents_.+_watch_(aws_burst_power|neptune_.+)"} and on (topic) cc:agents_topic_live) * 1 > 0) or ((mqtt_stale{topic=~"agents_.+_watch_.+",topic!~"agents_.+_watch_(aws_burst_power|neptune_.+)"} and on (topic) cc:agents_topic_live) > 0), "item", "$1", "topic", "agents_.+_watch_(.+)")) unless on (item) cc:watch_state_raw{domain!="other"}
         # Home Assistant's connectivity sensors, the wall pill's "N down": fleet_alerts.yaml publishes each one
-        - record: cc:watch_state
+        - record: cc:watch_state_raw
           labels: {domain: home}
           expr: >-
             max by (item) (label_replace((mqtt_tripped{topic=~"agents_hass_conn_.+",topic!~"agents_hass_conn_neptune_.+"} and on (topic) cc:agents_topic_live) * 2 > 0, "item", "$1", "topic", "agents_hass_conn_(.+)"))
+        # A quarantined watch (dotfiles-private watch-companion-loop quarantine: an owner and an expiry of
+        # at most 7d) is a red that waits outside the fleet. agent-mqtt-publish sends quarantined=true only
+        # while it is in force and the watch is still red, so it warns instead of holding the rollup down;
+        # it never reads ok, and it is down again the minute the quarantine ends.
+        - record: cc:watch_quarantined
+          expr: >-
+            max by (item) (label_replace((mqtt_quarantined{topic=~"agents_.+_watch_.+"} and on (topic) cc:agents_topic_live) > 0, "item", "$1", "topic", "agents_.+_watch_(.+)"))
+        - record: cc:watch_state
+          expr: >-
+            (clamp_max(cc:watch_state_raw, 1) and on (item) cc:watch_quarantined) or cc:watch_state_raw
         - record: cc:component_status
           labels: {domain: k3s, component: watches}
           expr: >-
@@ -136,6 +165,10 @@ spec:
           labels: {domain: ci, component: watches}
           expr: >-
             max(cc:watch_state{domain="ci"}) or vector(0)
+        - record: cc:component_status
+          labels: {domain: projects, component: watches}
+          expr: >-
+            max(cc:watch_state{domain="projects"}) or vector(0)
         - record: cc:component_status
           labels: {domain: queue, component: watches}
           expr: >-
@@ -188,21 +221,30 @@ spec:
           labels: {domain: llm, component: gateway}
           expr: >-
             (clamp_max(count(up{job="litellm"} == 0), 1) * 2) or (absent(up{job="litellm"}) * 2) or vector(0)
-        # any host/pool below its expected size -> 1 (per host: one dead laptop must not hide behind another's full pool)
+        # any host/pool below its expected size -> 1 (per host: one dead laptop must not hide behind another's full pool).
+        # A cloud host the CI governor stopped is meant to be offline, so it is left out, the same guard
+        # as prometheus-rules-node-health.yaml; it counts again once the governor reports it running.
         - record: cc:component_status
           labels: {domain: ci, component: pools}
           expr: >-
-            clamp_max(count(max by (host, pool) (github_runner_pool_online) < max by (host, pool) (github_runner_pool_expected)), 1) or vector(0)
+            clamp_max(count(
+              (max by (host, pool) (github_runner_pool_online) < max by (host, pool) (github_runner_pool_expected))
+              unless on (host) max by (host) (ci_governor_power_state{state=~"stopped|starting|stopping"} == 1)
+            ), 1) or vector(0)
         # any agentctl runner in error or whose last run STALLED -> 1
         - record: cc:component_status
           labels: {domain: agents, component: runners}
           expr: >-
             clamp_max(count((mqtt_failed{topic=~"agents_.+_runner_.+"} and on (topic) cc:agents_topic_live) == 1), 1) or vector(0)
-        # agent-mqtt-publish republishes every 5 min; nothing in 20 min means every agent and watch number is frozen -> 1
+        # The fleet lease holder's agent-mqtt-publish.timer republishes every 5 min; a no-lease peer
+        # (razer-laptop) publishes only on events, so its topic sits still for hours. No host's summary
+        # changing in 20 min means every agent and watch number is frozen -> 1. Known gap: a peer's event
+        # publish can hide a dead holder here. SentinelSilent pages that case about 40 min in, because
+        # only the holder stamps runner_sentinel. Prometheus has no lease-holder metric to scope this to.
         - record: cc:component_status
           labels: {domain: agents, component: feed}
           expr: >-
-            clamp_max(count(changes(mqtt_message_total{topic=~"agents_.+_summary_asks_open"}[20m]) == 0), 1) or (absent(mqtt_message_total{topic=~"agents_.+_summary_asks_open"})) or vector(0)
+            absent(changes(mqtt_message_total{topic=~"agents_.+_summary_asks_open"}[20m]) > 0) or vector(0)
         # sentinel stamps its runner state every sweep; nothing in 30 min means no watch is being checked -> 2.
         # A frozen feed freezes this stamp too, so the feed row answers for that case instead.
         - record: cc:component_status
@@ -242,7 +284,7 @@ spec:
             severity: critical
             fleet: fix
           annotations:
-            summary: The agent feed has published nothing in 30 minutes, so every watch, runner and queue number is frozen
+            summary: No host has published the agent feed in 30 minutes, so every watch, runner and queue number is frozen
             runbook: ~/.config/agentctl/SENTINEL.md (dotfiles-private), "Operate"
         - alert: SentinelSilent
           expr: cc:component_status{domain="agents",component="sentinel"} > 0
@@ -298,11 +340,11 @@ spec:
         - record: cc:sessions_attention
           expr: >-
             sum(mqtt_attention{topic=~"agents_.+_summary_sessions"})
-        # Rostered slots only, so online/expected compare like with like: the exporter also
-        # reports online runners for a host/pool missing from RUNNER_ROSTER.
+        # Rostered slots only: the exporter counts online only the runners a topology slot
+        # (apps/ci-topology) names, so online and expected compare like with like.
         - record: cc:ci_online
           expr: >-
-            sum(max by (host, pool) (github_runner_pool_online) and on (host, pool) max by (host, pool) (github_runner_pool_expected))
+            sum(max by (host, pool) (github_runner_pool_online))
         - record: cc:ci_expected
           expr: >-
             sum(max by (host, pool) (github_runner_pool_expected))
@@ -370,6 +412,34 @@ spec:
           expr: >-
             max by (host, runner) (ci_runner_cpus_allowed * on (instance) group_left (host) cc:host_instance
               and on (instance) (time() - node_textfile_mtime_seconds{file=~".*ci_runner.prom"} < 60))
+        # Memory each runner and its job hold, and the cap of a cgroup that holds it alone
+        # (none where several runners share one). Same file and staleness as the cores.
+        - record: cc:runner_mem_bytes
+          expr: >-
+            max by (host, runner) (ci_runner_memory_bytes * on (instance) group_left (host) cc:host_instance
+              and on (instance) (time() - node_textfile_mtime_seconds{file=~".*ci_runner.prom"} < 60))
+        - record: cc:runner_mem_max_bytes
+          expr: >-
+            max by (host, runner) (ci_runner_memory_max_bytes * on (instance) group_left (host) cc:host_instance
+              and on (instance) (time() - node_textfile_mtime_seconds{file=~".*ci_runner.prom"} < 60))
+        # The same cores and memory labelled with the kind of job the runner runs
+        # (github-runner-exporter ci_runner_job, busy runners only), so each kind's share of
+        # a slot can be measured: scripts/ci-kind-weights.py. A runner with no kind has no row.
+        - record: cc:job_kind_cores
+          expr: cc:runner_cores_busy * on (runner) group_left (kind) max by (runner, kind) (ci_runner_job)
+        - record: cc:job_kind_mem
+          expr: cc:runner_mem_bytes * on (runner) group_left (kind) max by (runner, kind) (ci_runner_job)
+        # Disk under each runner's home, measured hourly (ci-runner-disk.timer). Dropped
+        # after 2h, so a stopped timer reads as no figure; the age says how old the figure is.
+        - record: cc:runner_disk_bytes
+          expr: >-
+            max by (host, runner) (ci_runner_disk_bytes * on (instance) group_left (host) cc:host_instance
+              and on (instance) (time() - node_textfile_mtime_seconds{file=~".*ci_runner_disk.prom"} < 7200))
+        - record: cc:runner_disk_age_seconds
+          expr: >-
+            max by (host, runner) (
+              (cc:runner_disk_bytes * 0) + on (host) group_left
+              max by (host) (time() - ci_runner_disk_measured_seconds * on (instance) group_left (host) cc:host_instance))
         # Windows has no load average, so no Windows branch: the board reads "-".
         # Headroom over a working day, not one sample: a host that reads busy now may
         # have idled all afternoon, and the 6h figure is what a rebalance is judged on.
@@ -388,6 +458,34 @@ spec:
                or (node_memory_active_bytes + node_memory_wired_bytes + node_memory_compressed_bytes) / node_memory_total_bytes)
               * on (instance) group_left (host) cc:host_instance)
             or max by (host) (1 - windows_memory_physical_free_bytes{host!=""} / windows_memory_physical_total_bytes{host!=""})
+        # The same reading in bytes, for "39 of 64G": used as the ratio above counts it.
+        - record: cc:host_mem_total_bytes
+          expr: >-
+            max by (host) ((node_memory_MemTotal_bytes or node_memory_total_bytes) * on (instance) group_left (host) cc:host_instance)
+            or max by (host) (windows_memory_physical_total_bytes{host!=""})
+        - record: cc:host_mem_used_bytes
+          expr: >-
+            max by (host) (
+              (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes
+               or node_memory_active_bytes + node_memory_wired_bytes + node_memory_compressed_bytes)
+              * on (instance) group_left (host) cc:host_instance)
+            or max by (host) (windows_memory_physical_total_bytes{host!=""} - windows_memory_physical_free_bytes{host!=""})
+        # Free and total bytes of the filesystem the machines table's disk cell reads: the
+        # host's emptiest real one (device:node_filesystem_avail:ratio, prometheus-rules-capacity.yaml).
+        - record: cc:host_disk_avail_bytes
+          expr: >-
+            max by (host) (
+              (min by (instance, device) (node_filesystem_avail_bytes)
+                and on (instance, device) (device:node_filesystem_avail:ratio
+                  == on (instance) group_left min by (instance) (device:node_filesystem_avail:ratio)))
+              * on (instance) group_left (host) cc:host_instance)
+        - record: cc:host_disk_size_bytes
+          expr: >-
+            max by (host) (
+              (max by (instance, device) (node_filesystem_size_bytes)
+                and on (instance, device) (device:node_filesystem_avail:ratio
+                  == on (instance) group_left min by (instance) (device:node_filesystem_avail:ratio)))
+              * on (instance) group_left (host) cc:host_instance)
         # CPU package temperature only (coretemp / k10temp); nvme, wifi and battery sensors would read as the box.
         - record: cc:host_temp_c
           expr: >-
@@ -399,25 +497,6 @@ spec:
         - record: cc:host_local_gate
           expr: >-
             max without (instance, job, namespace, service, endpoint, pod, container) (fleet_local_gate{host!=""}
-              and on (instance) (time() - node_textfile_mtime_seconds{file=~".*fleet_local.prom"} < 180))
-        # The workstation's gate slots, from the same textfile. slots.sh owns the slot
-        # count (open + burst); fleet-assess only reports it, never re-derives it.
-        - record: cc:host_local_slots
-          expr: >-
-            sum by (host) (fleet_local_slots{host!=""}
-              and on (instance) (time() - node_textfile_mtime_seconds{file=~".*fleet_local.prom"} < 180))
-        # The rest are room slots, taken only while the machine has room: a ceiling, not capacity.
-        - record: cc:host_local_open_slots
-          expr: >-
-            sum by (host) (fleet_local_slots{host!="", kind="open"}
-              and on (instance) (time() - node_textfile_mtime_seconds{file=~".*fleet_local.prom"} < 180))
-        - record: cc:host_local_busy
-          expr: >-
-            max by (host) (fleet_local_slots_busy{host!=""}
-              and on (instance) (time() - node_textfile_mtime_seconds{file=~".*fleet_local.prom"} < 180))
-        - record: cc:host_local_queued
-          expr: >-
-            max by (host) (fleet_local_queued{host!=""}
               and on (instance) (time() - node_textfile_mtime_seconds{file=~".*fleet_local.prom"} < 180))
         # Gates finished in the last 24h (run.sh's ledger). pass / all results: absent
         # when nothing finished, so an idle day reads "-" and not 0%, and 0 (not absent)
@@ -436,9 +515,137 @@ spec:
           expr: >-
             sum(fleet_agent_sessions{host!=""}
               and on (instance) (time() - node_textfile_mtime_seconds{file=~".*fleet_local.prom"} < 180))
+        # Agent sessions sized like CI units (fleet-assess --textfile; heavy 2, light 1): the units
+        # a machine's sessions hold, and the units it takes (a worker's fleet_max_live, the
+        # dispatching machine's pace target, which is the last dispatch pass's reading and so
+        # lags cc:agent_sessions_running by up to a pass). A machine that publishes neither has
+        # no series. Host comes from cc:host_instance: a k3s node's node-exporter pod carries
+        # no `host` label of its own.
+        - record: cc:host_run_units
+          expr: >-
+            max by (host) (fleet_run_units * on (instance) group_left (host) cc:host_instance
+              and on (instance) (time() - node_textfile_mtime_seconds{file=~".*fleet_local.prom"} < 180))
+        - record: cc:host_run_units_max
+          expr: >-
+            max by (host) (fleet_run_units_max * on (instance) group_left (host) cc:host_instance
+              and on (instance) (time() - node_textfile_mtime_seconds{file=~".*fleet_local.prom"} < 180))
+        # Where each machine's cores and memory go, by class, for the hub and agent-web Space
+        # section (plan curried-squishing-mountain). `used` is measured, `reserved` is what a
+        # class holds back, and room is the reader's reserved minus used, so a class with no
+        # reservation shows a dash, never a made-up cap. Order matters: other and free read the
+        # classes recorded above them in this group.
+        #   ci      the runners' working cores and memory (cc:runner_*); reserved is the CPUs their cgroups may use and their memory cap
+        #   apps    k3s pods (cAdvisor); reserved is the Running pods' requests
+        #   agents  the agent harnesses' processes (node-inventory-metrics node_agent_*); reserved is agent_cpus
+        #   docker  Docker containers (node_docker_container_*)
+        #   other   the host's busy total less the four above; free is what is left
+        # ci and apps are direct readings, so they appear wherever they are measured. agents,
+        # docker, other and free are published only for a host with a fresh node inventory
+        # (cc:host_inventory): a host with no inventory (Macs, Windows, AWS) has no split, never
+        # zero. Docker reads 0 when no container runs. Agents reads 0 only where the host's
+        # inventory carries node_agent_* (the keep list is applied), and is absent where it does
+        # not, so an unapplied inventory role never passes for "no agents".
+        # The classes are measured differently (cAdvisor working set, process RSS, MemAvailable)
+        # and can overlap (a harness inside a container counts under agents and under docker or
+        # apps), so other is clamped at 0 and the classes can sum to more than the host.
+        - record: cc:host_inventory
+          expr: >-
+            group by (host) (node_processes_total * on (instance) group_left (host) cc:host_instance
+              and on (instance) (time() - node_textfile_mtime_seconds{file=~".*node_inventory.prom"} < 180))
+        # Cores by namespace: the drilldown under the apps class, and the apps class itself.
+        # Summed by node before the label rename, so the rename runs on a few series.
+        - record: cc:host_ns_cores
+          expr: >-
+            sum by (host, namespace) (label_replace(
+              sum by (node, namespace) (rate(container_cpu_usage_seconds_total{container!="", node!=""}[2m])),
+              "host", "$1", "node", "(.+)"))
+        - record: cc:host_class_cores
+          labels: {class: ci}
+          expr: sum by (host) (cc:runner_cores_busy)
+        - record: cc:host_class_cores
+          labels: {class: apps}
+          expr: sum by (host) (cc:host_ns_cores)
+        - record: cc:host_class_cores
+          labels: {class: agents}
+          expr: >-
+            (max by (host) (node_agent_cpu_cores * on (instance) group_left (host) cc:host_instance) and on (host) cc:host_inventory)
+            or ((max by (host) (node_agent_resident_bytes * on (instance) group_left (host) cc:host_instance) and on (host) cc:host_inventory) * 0)
+        - record: cc:host_class_cores
+          labels: {class: docker}
+          expr: >-
+            (sum by (host) (node_docker_container_cpu_cores * on (instance) group_left (host) cc:host_instance) and on (host) cc:host_inventory)
+            or (cc:host_inventory * 0)
+        - record: cc:host_class_cores
+          labels: {class: other}
+          expr: >-
+            clamp_min(
+              ((cc:host_cpu_busy_ratio * on (host) cc:host_cores) and on (host) cc:host_inventory)
+                - on (host) sum by (host) (cc:host_class_cores{class=~"ci|apps|agents|docker"}),
+              0)
+        - record: cc:host_class_cores
+          labels: {class: free}
+          expr: (cc:host_cores * (1 - cc:host_cpu_busy_ratio)) and on (host) cc:host_inventory
+        - record: cc:host_class_mem_bytes
+          labels: {class: ci}
+          expr: sum by (host) (cc:runner_mem_bytes)
+        - record: cc:host_class_mem_bytes
+          labels: {class: apps}
+          expr: >-
+            sum by (host) (label_replace(
+              sum by (node) (container_memory_working_set_bytes{container!="", node!=""}),
+              "host", "$1", "node", "(.+)"))
+        - record: cc:host_class_mem_bytes
+          labels: {class: agents}
+          expr: >-
+            (max by (host) (node_agent_resident_bytes * on (instance) group_left (host) cc:host_instance) and on (host) cc:host_inventory)
+        - record: cc:host_class_mem_bytes
+          labels: {class: docker}
+          expr: >-
+            (sum by (host) (node_docker_container_memory_bytes * on (instance) group_left (host) cc:host_instance) and on (host) cc:host_inventory)
+            or (cc:host_inventory * 0)
+        - record: cc:host_class_mem_bytes
+          labels: {class: other}
+          expr: >-
+            clamp_min(
+              (cc:host_mem_used_bytes and on (host) cc:host_inventory)
+                - on (host) sum by (host) (cc:host_class_mem_bytes{class=~"ci|apps|agents|docker"}),
+              0)
+        - record: cc:host_class_mem_bytes
+          labels: {class: free}
+          expr: clamp_min(cc:host_mem_total_bytes - cc:host_mem_used_bytes, 0) and on (host) cc:host_inventory
+        # Reserved. CI: the CPUs the runners' cgroups may use. Each runner reports its whole
+        # cpuset, and runners sharing a pin (or inheriting the host's) report the same set, so the
+        # host's figure is the widest one, not a sum. Memory: the cgroup cap of a runner that holds
+        # one alone, which is its own, so it sums.
+        - record: cc:host_class_reserved_cores
+          labels: {class: ci}
+          expr: max by (host) (cc:runner_cores_allowed)
+        - record: cc:host_class_reserved_mem_bytes
+          labels: {class: ci}
+          expr: sum by (host) (cc:runner_mem_max_bytes)
+        # k3s: what Running pods request. Most pods set none, so used and reserved are shown side by side.
+        - record: cc:host_class_reserved_cores
+          labels: {class: apps}
+          expr: >-
+            sum by (host) (label_replace(
+              sum by (node) (kube_pod_container_resource_requests{resource="cpu", node!=""}
+                and on (namespace, pod) (kube_pod_status_phase{phase="Running"} == 1)),
+              "host", "$1", "node", "(.+)"))
+        - record: cc:host_class_reserved_mem_bytes
+          labels: {class: apps}
+          expr: >-
+            sum by (host) (label_replace(
+              sum by (node) (kube_pod_container_resource_requests{resource="memory", node!=""}
+                and on (namespace, pod) (kube_pod_status_phase{phase="Running"} == 1)),
+              "host", "$1", "node", "(.+)"))
+        # Agents: the cpuset the agent-host-budget role pins all agent work to. A declared size,
+        # not a measurement, so it has no freshness gate: it stays until the role removes it.
+        - record: cc:host_class_reserved_cores
+          labels: {class: agents}
+          expr: max by (host) (agent_host_cpus * on (instance) group_left (host) cc:host_instance)
     # CI pools: how many runners each pool has, how many are busy, and how many jobs
     # wait for it. Read next to each other these show balance: a saturated pool
-    # beside idle ones. Pools come from the exporter's labels (pool_of), so a job
+    # beside idle ones. Pools are caps: a slot is counted once per cap it takes (github_runner_pool_slot), so a job
     # and the runners that could take it share one name. A queued run GitHub never
     # gave jobs (stuck="true") is left out, so its age cannot stand for the queue's.
     # Slots first: busy and waiting fall back to 0 for every pool that has runners.
@@ -452,49 +659,47 @@ spec:
         - record: cc:pool_slots
           expr: >-
             count by (pool) (max without (instance, pod, job, namespace, service, endpoint, container)
-              (github_runner_state{state="running"})
-              or (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_state{state="idle"})
+              (github_runner_pool_slot{state="running"})
+              or (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_pool_slot{state="idle"})
                 unless on (name) (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_withheld) == 1)))
         # Withheld splits in two: lent (a paired slot whose cores its pair uses, normal work,
         # ci_governor_lent) and withheld (held back for load, a pin, a drain or no work).
         - record: cc:pool_withheld
           expr: >-
             count by (pool) (max without (instance, pod, job, namespace, service, endpoint, container)
-              (github_runner_state{state="idle"})
+              (github_runner_pool_slot{state="idle"})
               and on (name) (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_withheld) == 1)
               unless on (name) (max without (instance, pod, job, namespace, service, endpoint, container) (ci_governor_lent) == 1))
             or cc:pool_slots * 0
         - record: cc:pool_lent
           expr: >-
             count by (pool) (max without (instance, pod, job, namespace, service, endpoint, container)
-              (github_runner_state{state="idle"})
+              (github_runner_pool_slot{state="idle"})
               and on (name) (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_withheld) == 1)
               and on (name) (max without (instance, pod, job, namespace, service, endpoint, container) (ci_governor_lent) == 1))
             or cc:pool_slots * 0
+        # Busy is by the kind of job a runner runs (ci_runner_job, what a machine row's DOING
+        # names), never by its caps: a runner can take several kinds (a unity-pool runner took light and heavy until hc-693), so counting
+        # caps read heavy 7/9 busy with no heavy job running (2026-11-19). Slots stay by caps.
         - record: cc:pool_busy
           expr: >-
-            count by (pool) (max without (instance, pod, job, namespace, service, endpoint, container)
-              (github_runner_state{state="running"}))
+            count by (pool) (label_replace(max without (instance, pod, job, namespace, service, endpoint, container)
+              (ci_runner_job), "pool", "$1", "kind", "(.+)"))
             or cc:pool_slots * 0
         # The same slots and busy split by where the machine is: site="cloud" for the
-        # exporter's CLOUD_HOSTS (inventory unity_ci_lan: false), "local" otherwise. The
-        # workstation's always-open gate slots count as local, so readers never add
-        # them again. The src label keeps the two halves apart under `or`.
+        # topology's cloud hosts (inventory unity_ci_lan: false), "local" otherwise.
+        # Counted from github_runner_state, one row per runner, so a slot with two caps counts once.
+        # A local Unity gate is no slot here: the governor's seats count it, in units.
         - record: cc:site_slots
           expr: >-
-            sum by (site) (
-              label_replace(count by (site) (max without (instance, pod, job, namespace, service, endpoint, container)
-                (github_runner_state{state="running"})
-                or (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_state{state="idle"})
-                  unless on (name) (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_withheld) == 1))),
-                "src", "runners", "", "")
-              or label_replace(label_replace(sum(cc:host_local_open_slots), "site", "local", "", ""), "src", "gates", "", ""))
+            count by (site) (max without (instance, pod, job, namespace, service, endpoint, container)
+              (github_runner_state{state="running"})
+              or (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_state{state="idle"})
+                unless on (name) (max without (instance, pod, job, namespace, service, endpoint, container) (github_runner_withheld) == 1)))
         - record: cc:site_busy
           expr: >-
-            sum by (site) (
-              label_replace(count by (site) (max without (instance, pod, job, namespace, service, endpoint, container)
-                (github_runner_state{state="running"})), "src", "runners", "", "")
-              or label_replace(label_replace(sum(cc:host_local_busy), "site", "local", "", ""), "src", "gates", "", ""))
+            count by (site) (max without (instance, pod, job, namespace, service, endpoint, container)
+              (github_runner_state{state="running"}))
             or cc:site_slots * 0
         - record: cc:github_hosted_running
           expr: >-
@@ -508,7 +713,7 @@ spec:
         - record: cc:pool_oldest_wait_seconds
           expr: >-
             max by (pool) (github_actions_job_waiting{stuck!="true"})
-        # Jobs each pool finished in the last 24h (runs created in the window). Jobs on
+        # Jobs of each kind finished in the last 24h (runs created in the window), pool=<kind>. Jobs on
         # runners that are not ours read pool="github-hosted".
         - record: cc:pool_done_24h
           expr: >-

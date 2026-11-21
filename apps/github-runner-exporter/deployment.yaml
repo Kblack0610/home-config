@@ -1,5 +1,4 @@
-# Its own account so apps/forgejo/runner-reader-rbac.yaml can let it read the
-# Forgejo runner pods, their logs and the runner ConfigMap, and nothing else.
+# Its own account, bound to nothing: it reads only GitHub and Forgejo.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -76,7 +75,7 @@ spec:
                   key: github-token-kblack0610
                   optional: true
             # Org-scoped runners (the Unity pool). Repo-scoped runners are read
-            # from every repo in RUN_REPOS.
+            # from every repo in RUN_REPOS and every repo a topology slot names.
             - name: RUNNER_ORGS
               value: "BlackNBrownStudios"
             - name: RUN_REPOS
@@ -86,39 +85,36 @@ spec:
             # CI, read with GITHUB_TOKEN_KBLACK0610.
             - name: FEED_REPOS
               value: "Kblack0610/.dotfiles Kblack0610/freqtrade_trading_attempt Kblack0610/android-suite Kblack0610/zmk_config Kblack0610/openmptcsetup Kblack0610/.dotfiles-private Kblack0610/ebay-lister Kblack0610/gungan-speak Kblack0610/playtest-bot"
-            # host:pool:slots. Mirrors ansible/inventory.yml (linux_ci_runners
-            # ci_*_slots, unity_ci_runners and unity_ci_mac_runners unity_ci_slots), the mac-mini's
-            # two runners (mac-mini-mac, m1-playground-mac) and the opt-in windows-media test runner.
-            # Change a slot count there, change it here.
-            - name: RUNNER_ROSTER
-              value: "razer-laptop:light:2 razer-laptop:heavy:1 razer-laptop:unity:1 ms-a2:unity:4 deskslim-2:unity:3 cachyos-x8664-main:unity:2 windows-media-ci:light:4 windows-media-ci:unity:2 aws-spot-1:unity:5 aws-spot-2:unity:5 aws-spot-3:unity:5 aws-build-1:unity-build:3 aws-build-1:unity:6 mac-mini:macos:2 windows-media:windows:1"
-            # Runner hosts off the home LAN, so the runner rows say site="cloud" and the
-            # hover and board can count cloud vs local. Mirrors the inventory hosts with
-            # unity_ci_lan: false; scripts/check-runner-roster.py fails if they drift.
-            - name: CLOUD_HOSTS
-              value: "aws-build-1 aws-spot-1 aws-spot-2 aws-spot-3"
-            # Forgejo repos whose Actions jobs and tasks are read; the forgejo-runner
-            # pods are the runners (pool="forgejo", forge="forgejo").
+            # Forgejo repos whose Actions jobs and tasks are read; the topology's
+            # Forgejo seats are the runners (pool="forgejo", forge="forgejo").
             - name: FORGEJO_REPOS
-              value: "kblack0610/platform kblack0610/home-config kblack0610/bnb-game-servers kblack0610/personal-sites"
-            # Forgejo access token of kblack0610, scope read:repository only: the
-            # jobs list is owner-only (Forgejo v14 api.go: reqOwner) and needs a
-            # token even on a public repo. Minted by a human, then:
-            #   sops apps/github-runner-exporter/github-runner-exporter-secret.yaml
-            # and add a data key forgejo-token (base64). Optional: without it every
-            # forgejo:repos/* source reads api_ok=0, and the runner rows still show.
+              value: "kblack0610/platform kblack0610/home-config kblack0610/bnb-game-servers kblack0610/personal-sites kblack0610/tilecast kblack0610/audio kblack0610/asset-library kblack0610/.notes kblack0610/gungan-speak"
+            # Forgejo access token of kblack0610 (the admin), scopes read:repository
+            # and read:admin: the jobs list is owner-only and the runner list is
+            # admin-only. Minted with the admin CLI (docs/credentials.md), stored as
+            # data key forgejo-token. Optional: without it every forgejo:* source
+            # reads api_ok=0 and no Forgejo runner rows show.
             - name: FORGEJO_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: github-runner-exporter
                   key: forgejo-token
                   optional: true
+            # The governor's /tasks names the job each Forgejo seat runs, which the
+            # Forgejo API does not; unset or down, a running seat's row has no repo.
+            - name: GOVERNOR_URL
+              value: "http://ci-runner-governor.monitoring:9321"
           ports:
             - name: metrics
               containerPort: 9320
           volumeMounts:
             - name: script
               mountPath: /app
+              readOnly: true
+            # Every slot the inventory gives CI (apps/ci-topology): the expected
+            # rows, so a slot whose runner never registered still shows as missing.
+            - name: topology
+              mountPath: /topology
               readOnly: true
           resources:
             # 34Mi in use before the /api/ci/details feed (2026-11-11). Its job records are
@@ -150,6 +146,9 @@ spec:
         - name: script
           configMap:
             name: github-runner-exporter-script
+        - name: topology
+          configMap:
+            name: ci-topology
 ---
 apiVersion: v1
 kind: Service

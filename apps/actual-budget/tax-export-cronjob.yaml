@@ -40,7 +40,9 @@ spec:
                     secretKeyRef:
                       name: backup-nas-credentials
                       key: smb-password
-                # Override to export a specific year; defaults to current year.
+                # Override to export a specific year. The default is the year of
+                # the day before the run: the Jan 1 run exports the year that just
+                # closed, the Apr/Jul/Oct runs the current year to date.
                 - name: TAX_YEAR
                   value: ""
               command:
@@ -51,8 +53,7 @@ spec:
                   apk add --no-cache curl jq samba-client >/dev/null
                   API="http://actual-http-api.actual-budget.svc.cluster.local:5007/v1"
                   SID="$BUDGET_SYNC_ID"
-                  YEAR="${TAX_YEAR:-$(date +%Y)}"
-                  [ -z "$YEAR" ] && YEAR="$(date +%Y)"
+                  YEAR="${TAX_YEAR:-$(date -d "@$(( $(date +%s) - 86400 ))" +%Y)}"
                   SINCE="${YEAR}-01-01"
                   UNTIL="${YEAR}-12-31"
                   OUT="/tmp/actual-tax-${YEAR}.csv"

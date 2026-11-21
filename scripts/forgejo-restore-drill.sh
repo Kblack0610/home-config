@@ -9,8 +9,8 @@
 #   sudo scripts/forgejo-restore-drill.sh [backup-dir]
 # backup-dir defaults to the 8TB copy, /mnt/backup-8t/forgejo-backups, which
 # holds the fulls before and after Forgejo moves to forge-hel1 (offbox, then
-# forgejo-backup-pull). IMAGE defaults to the image in
-# apps/forgejo/deployment.yaml beside this script; set it when running a copy.
+# forgejo-backup-pull). IMAGE defaults to forgejo_host_image in
+# ansible/roles/forgejo-host/defaults/main.yml beside this script; set it when running a copy.
 #
 # --network none keeps the copy from pushing, mailing or taking jobs; cron, actions
 # and the mailer are off so it never writes into the restored repos. What it does
@@ -36,12 +36,12 @@ warn() { echo "drill: WARNING: $*" >&2; }
 [ "$(id -u)" -eq 0 ] || fail "run as root (it unpacks uid 1000 files and drives docker)"
 for c in docker sqlite3 flock; do command -v "$c" >/dev/null || fail "$c is not installed"; done
 if [ -z "${IMAGE:-}" ]; then
-  manifest="$(dirname "$0")/../apps/forgejo/deployment.yaml"
+  manifest="$(dirname "$0")/../ansible/roles/forgejo-host/defaults/main.yml"
   [ -f "$manifest" ] || fail "IMAGE is unset and $manifest is not beside this copy"
-  IMAGE=$(sed -n 's|^ *image: *\(.*forgejo/forgejo:.*\)$|\1|p' "$manifest" | head -1)
+  IMAGE=$(sed -n 's|^forgejo_host_image: *\(.*forgejo/forgejo:.*\)$|\1|p' "$manifest" | head -1)
   [ -n "$IMAGE" ] || fail "no forgejo image in $manifest"
 fi
-# The tag, without the @sha256 pin deployment.yaml carries.
+# The tag, without the @sha256 pin the role carries.
 TAG=${IMAGE%%@*}
 TAG=${TAG##*:}
 

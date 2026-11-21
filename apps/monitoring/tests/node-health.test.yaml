@@ -2,9 +2,10 @@ rule_files:
   - node-health.rules.yaml
 
 # A throttling CPU saws between its limit and a dip (saw), which the old instant rules
-# never fired on. One spike (spike) and the workstation (192.168.1.2) fire neither rule.
+# never fired on. One spike (spike) fires neither rule. The workstation (192.168.1.2),
+# left out until 2026-11-17, fires both like any other host.
 tests:
-  - name: a sawtooth fires both heat rules, a single spike and the workstation fire neither
+  - name: a sawtooth and the workstation fire both heat rules, a single spike fires neither
     interval: 1m
     input_series:
       - series: 'node_hwmon_temp_celsius{instance="saw:9100",chip="k",sensor="temp1"}'
@@ -30,13 +31,21 @@ tests:
             exp_annotations:
               summary: "CPU at 100C on saw:9100"
               description: "The CPU package on saw:9100 has peaked above 95C in every 5m window for 5m, close to its thermal limit. The host may throttle hard or shut down; asus-laptop dropped off the LAN after hours here on 2026-10-23, and hp-victus went NotReady on 2026-11-13. Move work off it now."
+          - exp_labels: {alertname: NodeCpuCritical, severity: critical, fleet: none, category: node-health, instance: "192.168.1.2:9100"}
+            exp_annotations:
+              summary: "CPU at 99C on 192.168.1.2:9100"
+              description: "The CPU package on 192.168.1.2:9100 has peaked above 95C in every 5m window for 5m, close to its thermal limit. The host may throttle hard or shut down; asus-laptop dropped off the LAN after hours here on 2026-10-23, and hp-victus went NotReady on 2026-11-13. Move work off it now."
       - eval_time: 12m
         alertname: NodeCpuHot
         exp_alerts:
-          - exp_labels: {alertname: NodeCpuHot, severity: warning, fleet: none, category: node-health, instance: "saw:9100"}
+          - exp_labels: {alertname: NodeCpuHot, severity: warning, fleet: fix, category: node-health, instance: "saw:9100"}
             exp_annotations:
               summary: "CPU hot on saw:9100 (peaks of 100C for 10m)"
-              description: "The CPU package on saw:9100 has peaked above 90C in every 10m window for 10m. Run scripts/host-headroom.py on it and move work off; on a laptop, check thermal-cap.service applied after the last boot (systemctl status thermal-cap) and lower the cap in inventory.yml (thermal_capped) if it did."
+              description: "The CPU package on saw:9100 has peaked above 90C in every 10m window for 10m. Check thermal-cap.service applied after the last boot (systemctl status thermal-cap) and the host is in inventory.yml thermal_capped; if it is capped and still hot, lower its cap (ansible/roles/thermal-cap/README.md). The workstation's apply needs the human's sudo: file the README's command as an ask. Run scripts/host-headroom.py on it before moving work off."
+          - exp_labels: {alertname: NodeCpuHot, severity: warning, fleet: fix, category: node-health, instance: "192.168.1.2:9100"}
+            exp_annotations:
+              summary: "CPU hot on 192.168.1.2:9100 (peaks of 99C for 10m)"
+              description: "The CPU package on 192.168.1.2:9100 has peaked above 90C in every 10m window for 10m. Check thermal-cap.service applied after the last boot (systemctl status thermal-cap) and the host is in inventory.yml thermal_capped; if it is capped and still hot, lower its cap (ansible/roles/thermal-cap/README.md). The workstation's apply needs the human's sudo: file the README's command as an ask. Run scripts/host-headroom.py on it before moving work off."
 
   # hp-victus on 2026-11-14: charger out, battery draining. A host with mains on, a
   # mouse battery (scope Device) and a device battery on a host with no Mains fire nothing.
@@ -89,34 +98,10 @@ tests:
               summary: "victus:9100 battery at 15% off mains"
               description: "BAT1 on victus:9100 is at 15% with the charger offline. The host goes down within minutes; plug the charger in now."
 
-  - name: AWS expected power transitions stay quiet while running and unknown failures page
+  - name: a down target pages on each static job
     interval: 1m
     input_series:
-    - series: up{job="aws-ci-nodes",host="aws-stopped",instance="stopped:9100"}
-      values: '0x10'
-    - series: ci_governor_power_state{host="aws-stopped",state="stopped"}
-      values: 1x10
-    - series: up{job="aws-ci-nodes",host="aws-starting",instance="starting:9100"}
-      values: '0x10'
-    - series: ci_governor_power_state{host="aws-starting",state="starting"}
-      values: 1x10
-    - series: up{job="aws-ci-nodes",host="aws-stopping",instance="stopping:9100"}
-      values: '0x10'
-    - series: ci_governor_power_state{host="aws-stopping",state="stopping"}
-      values: 1x10
-    - series: up{job="aws-ci-nodes",host="aws-running",instance="running:9100"}
-      values: '0x10'
-    - series: ci_governor_power_state{host="aws-running",state="running"}
-      values: 1x10
-    - series: up{job="aws-ci-nodes",host="aws-unknown",instance="unknown:9100"}
-      values: '0x10'
-    - series: up{job="aws-ci-nodes",host="aws-zero",instance="zero:9100"}
-      values: '0x10'
-    - series: ci_governor_power_state{host="aws-zero",state="running"}
-      values: '0x10'
-    - series: up{job="aws-ci-nodes",host="aws-healthy",instance="healthy:9100"}
-      values: 1x10
-    - series: up{job="standalone-nodes",host="aws-stopped",instance="standalone:9100"}
+    - series: up{job="standalone-nodes",host="pi3",instance="standalone:9100"}
       values: '0x10'
     - series: up{job="node-exporter",instance="k3s:9100"}
       values: '0x10'
@@ -127,42 +112,12 @@ tests:
       alertname: NodeDown
       exp_alerts:
       - exp_labels:
-          job: aws-ci-nodes
-          host: aws-running
-          instance: running:9100
-          severity: critical
-          fleet: fix
-          category: node-health
-        exp_annotations:
-          summary: 'Node down: running:9100 (aws-ci-nodes)'
-          description: node-exporter target running:9100 (job aws-ci-nodes) has been unreachable for 2m; the host may be powered off, crashed, or off the network.
-      - exp_labels:
-          job: aws-ci-nodes
-          host: aws-unknown
-          instance: unknown:9100
-          severity: critical
-          fleet: fix
-          category: node-health
-        exp_annotations:
-          summary: 'Node down: unknown:9100 (aws-ci-nodes)'
-          description: node-exporter target unknown:9100 (job aws-ci-nodes) has been unreachable for 2m; the host may be powered off, crashed, or off the network.
-      - exp_labels:
-          job: aws-ci-nodes
-          host: aws-zero
-          instance: zero:9100
-          severity: critical
-          fleet: fix
-          category: node-health
-        exp_annotations:
-          summary: 'Node down: zero:9100 (aws-ci-nodes)'
-          description: node-exporter target zero:9100 (job aws-ci-nodes) has been unreachable for 2m; the host may be powered off, crashed, or off the network.
-      - exp_labels:
           job: standalone-nodes
           instance: standalone:9100
           severity: critical
           fleet: fix
           category: node-health
-          host: aws-stopped
+          host: pi3
         exp_annotations:
           summary: 'Node down: standalone:9100 (standalone-nodes)'
           description: node-exporter target standalone:9100 (job standalone-nodes) has been unreachable for 2m; the host may be powered off, crashed, or off the network.
@@ -185,40 +140,10 @@ tests:
           summary: 'Node down: mac:9100 (mac-nodes)'
           description: node-exporter target mac:9100 (job mac-nodes) has been unreachable for 2m; the host may be powered off, crashed, or off the network.
 
-  - name: standalone targets remain while the AWS scrape job disappears
+  - name: the standalone scrape job disappearing warns
     interval: 1m
     input_series:
-    - series: up{job="standalone-nodes",instance="standalone:9100"}
-      values: 1x20
-    alert_rule_test:
-    - eval_time: 16m
-      alertname: StandaloneNodeExporterAbsent
-      exp_alerts:
-      - exp_labels:
-          job: aws-ci-nodes
-          severity: warning
-          fleet: fix
-          category: node-health
-        exp_annotations:
-          summary: aws-ci-nodes scrape job is absent
-          description: No aws-ci-nodes targets are being scraped, so NodeDown is blind to this job's hosts. Check apps/monitoring/external-standalone-nodes.yaml and that prometheus-node-exporter is running on each host.
-  - name: configured stopped AWS targets prevent the absent-job alert
-    interval: 1m
-    input_series:
-    - series: up{job="standalone-nodes",instance="standalone:9100"}
-      values: 1x20
-    - series: up{job="aws-ci-nodes",host="aws-burst-1",instance="aws:9100"}
-      values: '0x20'
-    - series: ci_governor_power_state{host="aws-burst-1",state="stopped"}
-      values: 1x20
-    alert_rule_test:
-    - eval_time: 16m
-      alertname: StandaloneNodeExporterAbsent
-      exp_alerts: []
-  - name: AWS targets remain while the standalone scrape job disappears
-    interval: 1m
-    input_series:
-    - series: up{job="aws-ci-nodes",host="aws-build-1",instance="aws:9100"}
+    - series: up{job="node-exporter",instance="k3s:9100"}
       values: 1x20
     alert_rule_test:
     - eval_time: 16m
@@ -232,6 +157,15 @@ tests:
         exp_annotations:
           summary: standalone-nodes scrape job is absent
           description: No standalone-nodes targets are being scraped, so NodeDown is blind to this job's hosts. Check apps/monitoring/external-standalone-nodes.yaml and that prometheus-node-exporter is running on each host.
+  - name: a scraped standalone job stays quiet
+    interval: 1m
+    input_series:
+    - series: up{job="standalone-nodes",host="pi3",instance="standalone:9100"}
+      values: 1x20
+    alert_rule_test:
+    - eval_time: 16m
+      alertname: StandaloneNodeExporterAbsent
+      exp_alerts: []
   - name: a quarantine taint pages critical once per node, other taints do not
     interval: 1m
     input_series:
@@ -286,4 +220,31 @@ tests:
     alert_rule_test:
       - eval_time: 35m
         alertname: KubeletVersionSkew
+        exp_alerts: []
+
+  # Three hosts' boot times move together (a power cut); one alone, and an iot-pi-nodes host, do not.
+  - name: three hosts rebooting at once fire HostPowerEvent, one host does not
+    interval: 1m
+    input_series:
+      - series: 'node_boot_time_seconds{instance="a:9100",job="node-exporter"}'
+        values: '100x5 200x10'
+      - series: 'node_boot_time_seconds{instance="b:9100",job="node-exporter"}'
+        values: '100x5 200x10'
+      - series: 'node_boot_time_seconds{instance="c:9100",job="mac-nodes"}'
+        values: '100x5 200x10'
+      - series: 'node_boot_time_seconds{instance="d:9100",job="iot-pi-nodes"}'
+        values: '100x5 200x10'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: HostPowerEvent
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: HostPowerEvent
+        exp_alerts:
+          - exp_labels: {severity: critical, fleet: none, category: node-health}
+            exp_annotations:
+              summary: "Power event: 3 hosts rebooted within 5m"
+              description: "3 hosts' node_boot_time moved in the last 5m. Several reboots at once point at power, not at one host. Check the UPS (docs/nut-ups.md) and which hosts came back: node_boot_time_seconds."
+      - eval_time: 14m
+        alertname: HostPowerEvent
         exp_alerts: []

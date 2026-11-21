@@ -7,14 +7,16 @@ kind: Kustomization
 # itself is created by apps/gatus-fleet.
 namespace: gatus-fleet
 
-# Hashed name -> editing exporter.py changes the ConfigMap name -> changes the
-# Deployment -> Flux rolls the pod. Without the hash, a script edit would apply
-# and do nothing until an unrelated restart (see apps/gatus-fleet for the full
-# subPath story).
+# Hashed name -> editing exporter.py or roster.json changes the ConfigMap name ->
+# changes the Deployment -> Flux rolls the pod. Without the hash, an edit would
+# apply and do nothing until an unrelated restart (see apps/gatus-fleet for the
+# full subPath story). roster.json is rendered from ansible/inventory.yml by
+# scripts/render-fleet-pulse.py; never edit it by hand.
 configMapGenerator:
   - name: fleet-exporter-script
     files:
       - exporter.py
+      - roster.json
 
 resources:
   - deployment.yaml

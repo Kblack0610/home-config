@@ -49,6 +49,15 @@ sops ansible/group_vars/linux_bare_metal/vault.sops.yaml     # decrypts into $ED
 rbw get some_item | jq -R . | sops set --value-stdin ansible/group_vars/all/vault.sops.yaml '["vault_some_secret"]'
 ```
 
+The workstation (`cachyos-x8664-main`, local connection) asks for a sudo password, and agents have it: rbw `ansible_password`. Ansible cannot read a pipe or `<(...)` as `--become-password-file`, so point it at a throwaway executable that fetches the value, which keeps the password off disk:
+
+```bash
+p=$(mktemp "$XDG_RUNTIME_DIR/bp.XXXX") && printf '#!/bin/sh\nexec rbw get ansible_password\n' >"$p" && chmod 700 "$p"
+ansible-playbook playbooks/site.yml --limit cachyos-x8664-main --tags <tag> --become-password-file "$p"; rm -f "$p"
+```
+
+Macs use `mac_fleet_password` (`docs/mac-machines.md`), Linux bare-metal logins `linux_fleet_password` (`roles/login-passwords/README.md`).
+
 A new group gets its file the same way (`sops ansible/group_vars/<group>/vault.sops.yaml`); the `.sops.yaml` rule picks the recipients.
 
 ## Common commands
@@ -66,12 +75,12 @@ ansible-playbook playbooks/site.yml --limit hp-victus --check --diff
 ansible-playbook playbooks/site.yml --limit hp-victus
 
 # Run only a specific role via tags
-ansible-playbook playbooks/site.yml --limit razer-laptop --tags runner
+ansible-playbook playbooks/site.yml --limit ms-a2 --tags runner
 ```
 
 ## Phase A scope
 
-- `github-actions-runner-linux` role: registered a self-hosted GitHub Actions runner for `BlackNBrownStudios/platform` on `thinkcentre` (that host was retired 2026-10-12; the role now serves the `linux_ci_runners` group).
+- `github-actions-runner-linux` role: registered a self-hosted GitHub Actions runner for `BlackNBrownStudios/platform` on `thinkcentre` (that host was retired 2026-10-12; the role now serves the `unity_ci_runners` group).
 
 Everything else (k3s agent install, macOS launchd, OpenWRT config push, DHCP reservations) is a later phase — see the plan file referenced in `docs/gitops.md`.
 

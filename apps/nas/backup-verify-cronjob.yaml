@@ -66,8 +66,8 @@ spec:
                   done
 
                   # Forgejo keeps its backups off the NAS tree, so it gets its own checks.
-                  # They read the 8TB copy: forgejo-backup-offbox's until the cutover to
-                  # forge-hel1, then forgejo-backup-pull's, which builds the fulls there.
+                  # They read the 8TB copy that forgejo-backup-pull builds from forge-hel1
+                  # (forgejo-backup-offbox's until the cutover).
                   FJ_LATEST=$(ls -t /forgejo-backups/forgejo-full-*.tar.gz 2>/dev/null | head -1)
                   if [ -z "$FJ_LATEST" ]; then
                     REPORT="$REPORT\nFAIL: forgejo - no full backup found"

@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Managed by ansible (ci-host). Every CI slot's ACTIONS_RUNNER_HOOK_JOB_STARTED, and through the
+# job-completed.sh link its _JOB_COMPLETED (playbooks/site.yml); the name says which event ran.
+# Tests: test-job-started.sh beside the prune script.
+#
+# At job start a Unity slot (CI_SLOT_UNITY=1) first runs ci-disk-prune.sh --before-job, which
+# prunes idle slots under the floor; a failed prune never fails the job. Then both events run
+# ci-fresh-workspace --job-hook, which owns the workspace rules: it puts back the untracked state a light
+# job parked, removes ~/setup-pnpm (3G, reinstalled by pnpm/action-setup every run), keeps a Unity
+# project's workspace for its warm Library and empties any other, since the workflows were
+# written for a fresh VM. The end-of-job pass frees space instead of leaving it on an idle slot
+# (docs/runbooks/node-disk-pressure.md); the start pass catches a job whose end never ran.
+#
+# A file the slot cannot delete (root-owned, from a `docker run` without --user) fails the next
+# job loudly at its start instead of corrupting it; at job end it is logged, never failing a job
+# whose steps passed.
+set -euo pipefail
+
+if [ "${0##*/}" = job-completed.sh ]; then
+  trap 'rc=$?; [ "$rc" = 0 ] || echo "job-completed: cleanup exited $rc; the next job start retries it" >&2; exit 0' EXIT
+elif [ "${CI_SLOT_UNITY:-}" = 1 ]; then
+  {{ linux_ci_disk_prune }} --before-job || echo "job-started: ci-disk-prune.sh exited $?; the job goes on" >&2
+fi
+
+{{ linux_ci_fresh_workspace }} --job-hook

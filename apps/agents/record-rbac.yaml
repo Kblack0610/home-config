@@ -1,0 +1,28 @@
+# agent-web-record (dotfiles .local/bin/agent-web-record) points the Endpoints agents/agents at
+# the machine holding the fleet lease, each time agent-web starts there. It uses the kubeconfig
+# every fleet worker already has for schedules-sync (apps/github-runner-exporter
+# feed-reader-rbac.yaml), so this Role lets that account change that one object and nothing else.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: agent-web-record
+  namespace: agents
+rules:
+  - apiGroups: [""]
+    resources: ["endpoints"]
+    resourceNames: ["agents"]
+    verbs: ["get", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: agent-web-record
+  namespace: agents
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: agent-web-record
+subjects:
+  - kind: ServiceAccount
+    name: schedules-sync
+    namespace: monitoring

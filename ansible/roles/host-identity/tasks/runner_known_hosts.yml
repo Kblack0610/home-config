@@ -1,0 +1,24 @@
+---
+# The known_hosts the ansible-runner pod's convergence-check dials with: the keys of every host in
+# host_identity_runner_groups, from the inventory, never scanned. It replaces the whole file, so it
+# runs only in the pod, which sets HOME_CONFIG_ANSIBLE_RUNNER_POD (apps/ansible-runner/cronjob.yaml).
+# Anywhere else it would wipe a person's own known_hosts: on 2026-11-17 a run on the workstation
+# cut ~/.ssh/known_hosts to five lines and dropped github.com and the mac-mini.
+- name: Refuse to run outside the ansible-runner pod
+  ansible.builtin.assert:
+    that: lookup('ansible.builtin.env', 'HOME_CONFIG_ANSIBLE_RUNNER_POD') == 'true'
+    fail_msg: >-
+      runner_known_hosts replaces {{ host_identity_runner_known_hosts_path }} and runs only in the
+      ansible-runner pod (HOME_CONFIG_ANSIBLE_RUNNER_POD=true). A machine's own trust comes from
+      the host-identity play: ansible-playbook playbooks/site.yml --limit <host> --tags host-identity -K
+    quiet: true
+
+- name: Read the DHCP reservations
+  ansible.builtin.set_fact:
+    host_identity_devices: "{{ (lookup('ansible.builtin.file', host_identity_devices_file) | from_yaml).devices }}"
+
+- name: Write the runner's known_hosts from the inventory
+  ansible.builtin.copy:
+    dest: "{{ host_identity_runner_known_hosts_path }}"
+    mode: "0644"
+    content: "{{ hostvars | roster_known_hosts(groups, host_identity_runner_groups, host_identity_devices) | join('\n') }}\n"

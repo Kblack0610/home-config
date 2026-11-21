@@ -2,58 +2,72 @@
 
 Hosts that fleet-dispatch places agent sessions on, over ssh. The roster is the `fleet_workers` group in [`ansible/inventory.yml`](../../ansible/inventory.yml), and the dotfiles read it from that file alone (`.local/lib/fleet-hosts.sh`), so its vars stay there, not in `group_vars/`. The dispatch side, what it places and why: dotfiles-private `.config/agentctl/QUEUE.md`, "Fleet workers".
 
+A machine the human drives the fleet from, but that runs no session, goes in `fleet_controllers` instead (today `cachyos-rog`, the ROG Flow). Only the host-identity play targets that group (host keys, see "Host keys and NIC reservations"), and `fleet-hosts.sh` never places work there. Never move a controller into `fleet_workers` to give it a session.
+
 ## What a worker takes
 
-- A light claude queue item with no plan and no `#cloud-ok` tag, in a repo listed in the host's `fleet_repos`, when the fleet home is over its load or idle pace. Heavy (Unity) items, plan items and other harnesses stay on the home.
-- At most `fleet_max_live` sessions at once, and none while its own 1-minute load per core is over the dispatch pace (`DISPATCH_MAX_LOAD`).
-- A session there runs with `AGENT_STATE_HOST=<fleet_state_host>` on its launch line, so its `agent-queue` and `agent-ask` calls run on the fleet home over ssh. The queue and the asks stay in one store.
+- A light claude queue item with no plan and no `#cloud-ok` tag, in a repo in `fleet_repos` (one standard list on the `fleet_workers` group that every worker clones; a host never sets its own, since a host var replaces the list), when the machine holding the fleet lease, which runs dispatch, is over its load or idle pace. It runs on claude, or on a headless harness the host lists in `fleet_harnesses` while the host's probe reads that harness ready (see "Headless harnesses"). Heavy (Unity) items, plan items, a trainee batch review and any other harness stay on the holder.
+- At most `fleet_max_live` sessions at once, and none while its own 1-minute load per core is over the dispatch pace (`DISPATCH_MAX_LOAD`) or its MemAvailable is under `DISPATCH_HOST_MEM_MIN_PCT` (20%) of its memory.
+- With `fleet_first: [canary, night, trainee]` (any class alone works too; trainee is a trainee floor start, which must also be on a harness the worker runs), an item of that class goes to the worker before the holder, even while the holder has room; with no worker free it runs on the holder as usual. Any other item still fills the holder first.
+- A session there writes the queue and its asks into the worker's own store clone, which `store-sync` pushes at once, so every peer reads one store.
 
 ## Add a worker
 
-1. Add the host under `fleet_workers` with `fleet_place: false`. Its `ansible_host` can come from another group.
-2. From `ansible/`: `ansible-playbook playbooks/site.yml --limit <host> --tags fleet-worker`. Role `fleet-worker` installs tmux, stow, gh, codex, opencode, a Rust toolchain and Claude Code, stows the dotfiles (a plain `~/.zshrc` or `~/.bashrc` is kept as `*.pre-dotfiles`), clones `fleet_repos`, creates the account dirs `claude-acct` knows, builds `agent-panel` from the dotfiles (`cargo build --release`, as the user, on Arch only) and links it to `~/.local/bin/agent-panel` for the workstation's `fleet-sessions`, makes `~/.ssh/id_ed25519` and trusts the state host's host key.
-3. The play's last task prints what is left, all of it the human's (no agent copies a token):
+1. Add the host under `fleet_workers` with `fleet_place: false`, its `agent_cpus` (about 87.5% of its CPUs, see "CPU cap"), and its `ssh_host_ed25519` (its `/etc/ssh/ssh_host_ed25519_key.pub`, read over ssh you already trust). Its `ansible_host` can come from another group.
+2. From `ansible/`: `ansible-playbook playbooks/site.yml --limit <host> --tags fleet-worker,agent-host-budget`. Role `fleet-worker` installs tmux, stow, gh, opencode, a Rust toolchain, pnpm, uv and Claude Code, stows the dotfiles (a plain `~/.zshrc` or `~/.bashrc` is kept as `*.pre-dotfiles`), clones `fleet_repos`, clones home-config to `~/dev/home/home-config` (HTTPS, remote `forgejo`; sessions push and open PRs there as the Forgejo bot `fleet-worker`, see "Forgejo bot token") with `fleet-roster-fetch.timer` fetching it every 10 minutes, so the worker reads the roster too (without it fleet-dispatch there, when it holds the lease, sees no other worker), creates the account dirs `claude-acct` knows, builds `agent-panel` from the dotfiles (`cargo build --release`, as the user, on Arch only) and links it to `~/.local/bin/agent-panel` for the workstation's `fleet-sessions`, writes every roster machine's host key into `/etc/ssh/ssh_known_hosts` (see "Host keys" below), enables lingering so its user timers run with nobody logged in, joins the agent store as a peer (see "The agent store") and sets up what the fleet lease holder runs ("Every worker a peer" below).
+3. The play puts each Claude account's long-lived token on the worker (`claude-acct token push <host>`, from this machine's rbw, so unlock rbw here before the play; see dotfiles `docs/operations/claude-acct-tokens.md`). Its last task prints what is left for the human:
    - `gh auth login` on the worker, then re-run the play: that stows the private overlay and clones a private repo.
-   - Add the worker's public key, which the task prints, to `~/.ssh/authorized_keys` on the state host.
-   - Sign in each account: `claude`, then `/login`, once per account dir (`CLAUDE_CONFIG_DIR=<dir> claude` for each one but the main).
-4. When the play prints `Ready`, set `fleet_place: true` for the host and merge. fleet-dispatch reads the inventory as this repo's checkout's upstream branch holds it, fetched on each pass, so no pull is needed. On the workstation, `fleet-dispatch hosts` shows the worker as `open`, or the reason it takes nothing.
+   - Add its store key, which the task prints, as a write deploy key on Forgejo `kblack0610/.agent`, then re-run the play: it joins the store (see "The agent store").
+   - If it says the Claude tokens were not pushed, it names why: `rbw unlock` here, `claude-acct setup-token <account>` for an account with no token, or pull the worker's dotfiles; then re-run the play (or `claude-acct token push <host>`).
+4. When the play prints `Ready`, set `fleet_place: true` for the host and merge. fleet-dispatch reads the inventory as this repo's checkout's upstream branch holds it, fetched on each pass, so no pull is needed. On the workstation, `fleet-dispatch hosts` shows the worker as `open`, or the reason it takes nothing. `open` is only the probe: the worker is placed once one item dispatch puts there runs past its first turn, `fleet-dispatch hosts` counts it (one fewer free, `stuck` 0), and it reaches its PR or report. Until then, watch it: on 2026-11-18, 27 sessions sat on razer-laptop's first-run screen behind an `open` reading (hc-584). Sentinel `fleet-worker-stuck` pages on a stuck one.
 
-## The fleet home
+## Every worker a peer
 
-The machine named by the group's `fleet_state_host` is the fleet home: the workstation, `pc-home-cachy-main` (`razer-laptop` held it 2026-11-15 to 11-16 while the workstation was down). Other hosts forward their queue and ask writes to it, it serves agent-web (`apps/agents`), and the singleton lanes (dispatch, sentinel, fleet-state, git-sync) run only there. A worker that is the home keeps `fleet_place: false`: sessions run on it as the home, not as placed work.
+There is no fleet home. Every worker is a peer of the agent store: `~/.agent` is a full clone of Forgejo `kblack0610/.agent` that `store-sync` commits and pushes after each write, so a session's `agent-queue` and `agent-ask` calls write its own clone and the others pull. The singleton lanes (dispatch, sentinel, fleet-state, schedules-sync) and agent-web run on exactly one machine, the one holding the fleet lease (dotfiles `fleet-lease`, the branch `lease/fleet` on the store's remotes); any peer can take it when the holder stops renewing. What a lane is and how the lease moves: dotfiles-private `.config/agentctl/QUEUE.md`, "The fleet lease". `fleet-lease status` on any peer names the holder.
 
-When the home is a fleet worker, the same play sets it up; the workstation is set up by its own play and dotfiles. On a worker home the role skips the state-host key steps (it is the state host) and runs `tasks/home.yml`, which:
-- enables lingering, so user units run with nobody logged in;
+The same play sets up every worker; the workstation is set up by its own play and dotfiles. Role `fleet-worker` runs `tasks/peer.yml`, which:
 - builds `agent-web` and links it to `~/.local/bin/agent-web`;
-- makes `~/.ssh/id_agent_sync`, the key `git-sync-agent.sh` pushes the store with, and clones Forgejo `kblack0610/.agent` into `~/.agent` once that key is a write deploy key there (a plain `~/.agent` from before is kept as `~/.agent.pre-home`);
-- writes `~/.config/schedules-sync/kubeconfig` for the `monitoring/schedules-sync` account, which may only read the github-runner-exporter feed (`apps/github-runner-exporter/feed-reader-rbac.yaml`), and a `schedules-sync.service` drop-in that sets `KUBECONFIG` to it. Without it the feed never answers, no `~/.local/state/schedules/state.json` is written, and every `nightly:` queue hold waits on "no schedules state". `~/.kube/config` is not touched;
-- starts `agent-web.service` once `~/.config/agent-web/oauth.json` exists.
+- enables `fleet-lease.timer` once the worker is a store peer (`tasks/store.yml` joins it, see "The agent store");
+- builds `hub` (the hub-tui crate) and links it to `~/.local/bin/hub`, which `fleet-state.service` runs after each tick (`hub needs --page`). Arch only, like agent-web, and re-run the play after a dotfiles change to hub-core or `channels.toml` to rebuild it. Without it the unit logs "Unable to locate executable hub" every minute (razer-laptop, 2026-11-15). The first tick with the binary pages once for the NEEDS YOU rows already open, at most 3 named, under the score bar and daily cap in `channels.toml` `[pager.needs]`;
+- builds `notes` with `notes-bootstrap --build-only` (the private overlay's installer: it builds the notes-cli crate, publishes it to `~/.local/lib/notes` and links `~/.local/bin/notes`), which `agent-queue` runs to file a board row on add and close it on done. Arch only, and skipped until the overlay is stowed; it also links `notes-sync`, `notes-watch` and `~/.config/notes`, and exits 0 when its build fails, so the play reads `~/.local/bin/notes` back and the report names a missing one. Without it `agent-queue add` says "no story row filed: no notes on PATH" and `agent-queue done` says "notes: command not found", and no item files or closes its row (razer-laptop, 2026-11-15 to 11-16). The binary alone files nothing: the rows live in the `~/.notes` store, which the play does not clone, so a worker with no `~/.notes` still files no rows;
+- writes `~/.config/schedules-sync/kubeconfig` for the `monitoring/schedules-sync` account, which may only read the github-runner-exporter feed (`apps/github-runner-exporter/feed-reader-rbac.yaml`) and move the `agents/agents` Endpoints (`apps/agents/record-rbac.yaml`), and a `schedules-sync.service` drop-in that sets `KUBECONFIG` to it. Without it the feed never answers, no `~/.local/state/schedules/state.json` is written, and every `nightly:` queue hold waits on "no schedules state". `~/.kube/config` is not touched;
+- enables `agent-web.service` once `~/.config/agent-web/oauth.json` exists. `fleet-lease renew` starts it on the holder only, and its `agent-web-record` step points `agents.kblab.me` at that machine's LAN IP.
+- writes `~/.agent/.sync/no-lease` on a peer whose `fleet_lease` is false (default: not Arch), so it never holds the lease: its gate skips every singleton and `fleet-lease status` shows `candidate: false`.
 
-Left for the human, printed by the play: the deploy key, `oauth.json` from rbw item `agent-web-oauth-client` (`{"client_id": ..., "client_secret": ...}`, mode 0600), the sign-ins, then `agentctl reload` on the home to arm the lanes.
-
-Moving the home: on the old home run `git-sync-agent.sh` once so the store on Forgejo holds every queue and ask write, then stop its lanes. Change `fleet_state_host` and the Endpoints IP in `apps/agents/service.yaml` in one PR and run the play on the new host; it makes the new home its own `id_agent_sync` and prints it for the deploy key. Delete the old home's deploy key on Forgejo `kblack0610/.agent`.
+Left for the human, printed by the play: the deploy key, `oauth.json` from rbw item `agent-web-oauth-client` (`{"client_id": ..., "client_secret": ...}`, mode 0600), the sign-ins, then `agentctl reload` on the worker to arm the lanes. A worker that is not placed (`fleet_place: false`) can still hold the lease.
 
 ### Rotate the feed token
 
-The old token stops working at step 1, so the home's passes fail on the feed until step 3; it catches up from its cursor afterwards.
+The old token stops working at step 1, so the lease holder's schedules-sync passes fail on the feed until step 3; it catches up from its cursor afterwards.
 
 1. `kubectl -n monitoring delete secret schedules-sync-token`, `flux reconcile kustomization apps`, then `kubectl -n monitoring wait --for=jsonpath='{.data.token}' secret/schedules-sync-token`: the token controller fills the new Secret.
 2. Store its `token` and `ca.crt` (both base64-decoded) as `vault_fleet_home_feed_token` and `vault_fleet_home_feed_ca`: `sops ansible/group_vars/fleet_workers/vault.sops.yaml`. Check it first: `kubectl --kubeconfig=/dev/null --server=<k3s_url> --certificate-authority=<ca file> --token=<token> get --raw '/api/v1/namespaces/monitoring/services/github-runner-exporter:9320/proxy/api/ci/details?cursor=0&limit=1'` prints the feed.
-3. Re-run the play on the home (`--tags fleet-worker -l <home>`), then `systemctl --user start schedules-sync` there and check `~/.local/state/schedules/state.json` moved.
+3. Re-run the play on each worker (`--tags fleet-worker`), then `systemctl --user start schedules-sync` on the lease holder (`fleet-lease status`) and check `~/.local/state/schedules/state.json` moved.
+
+### Forgejo bot token
+
+A worker has no rbw, so a session there pushes home-config and opens, reads and lands its PRs as the bot `fleet-worker`: not an admin, write collaborator on `kblack0610/home-config` only, read collaborator on every private repo in the exporter feed's `forgejo_repos` (schedules-sync reads their CI there when a worker holds the lease; today platform, personal-sites, audio, asset-library and .notes). A private repo added to that list needs the same grant: `PUT /api/v1/repos/kblack0610/<repo>/collaborators/fleet-worker` with `{"permission":"read"}`, or schedules-sync on a worker exits 1 with a 404 on it. Its token, scopes `write:repository,read:user`, is `vault_fleet_forgejo_token` in `ansible/group_vars/fleet_workers/vault.sops.yaml`. The play writes it to `~/.config/forgejo/token` (0600), where dotfiles `forgejo-token` reads it after `FORGEJO_TOKEN` and before rbw, and sets the home-config clone's repo-local `credential.https://git.kblab.me.helper` to answer git with it. The role's last task asks Forgejo for the repo and fails the play unless the token can push.
+
+Rotate it (the old token keeps working until step 3, so nothing breaks in between):
+
+1. Mint a new one with the admin CLI (the `forgejo-ops` skill) and pipe it straight into SOPS, never to the terminal: `forgejo admin user generate-access-token --username fleet-worker --token-name fleet-worker-$(date +%Y%m%d) --scopes write:repository,read:user --raw`, then `jq -R . | sops set --value-stdin ansible/group_vars/fleet_workers/vault.sops.yaml '["vault_fleet_forgejo_token"]'`.
+2. Re-run the play on each worker (`--tags fleet-worker`); its push check passes on the new token.
+3. Delete the old token by name (`GET /api/v1/users/fleet-worker/tokens` lists them). That API takes only the bot's password: set a throwaway one with the admin CLI, `forgejo admin user change-password --username fleet-worker --password <random> --must-change-password=false`, then `curl -u fleet-worker -X DELETE https://git.kblab.me/api/v1/users/fleet-worker/tokens/<old name>`, which asks for it. `forgejo admin user delete --username fleet-worker` revokes every token at once.
+
+## The agent store
+
+Every worker holds a peer clone of the agent store (`~/.agent`, the queue, the asks and the logs), which `store-sync` commits, merges and pushes: each write at once, and `store-sync.timer` every 15 minutes. The design, the remotes and the log lines: dotfiles-private `.config/agentctl/QUEUE.md`, "The store: every machine a peer". The play (`tasks/store.yml`) runs its join steps:
+
+1. Makes `~/.ssh/id_agent_sync`, trusts Forgejo's pinned host key (`fleet_store_host_key` in the role defaults, never a scan) and checks the key reaches `STORE_PRIMARY_URL` from `~/.config/agentctl/store.env`, the private overlay's file that `store-sync` reads too, so the play holds no store URL of its own. Until the key is a write deploy key on Forgejo `kblack0610/.agent`, the report prints it with the error.
+2. Once it reaches, stops the lanes and `agent-web` and runs `store-sync join`, once (it creates `~/.agent/.sync/peer`). A clean `~/.agent` not ahead of origin joins in place; any other becomes a fresh clone, the old dir is kept at `~/.agent.pre-peer-<stamp>`, and that run's report names it. Join a machine with no live session: one still running writes into the kept copy.
+3. Enables `store-sync.timer`, which the dotfiles stow.
 
 ## Cloud worker
 
-`fleet-worker-1` is an Ubuntu Spot box in AWS (platform `infra/aws-ci-burst`, its `hosts` map) with no CI runners. The governor powers it: fleet-dispatch writes the key `fleet-worker-1.demand` into the `ci-runner-governor-override` ConfigMap on each pass (its live sessions plus the items waiting while every home host is at its gate), the governor starts it on demand and stops it after `idle_off_seconds` without any (`apps/ci-runner-governor/governor.py`, the "workers" paragraph). It takes only items in a repo in its `fleet_repos`, so leave every Unity repo out. A stop keeps its root disk and the sign-ins on it; a Terraform replace drops them.
+`fleet-worker-1` is an Ubuntu Spot box in AWS (platform `infra/aws-ci-burst`, its `hosts` map) with no CI runners. Nothing starts or stops it on its own: it runs while the human keeps the instance up (`aws ec2 start-instances` / `stop-instances --instance-ids <id> --region us-east-2`, which costs money, so the human runs them). It takes only items in a repo in its `fleet_repos`, so leave every Unity repo out. A stop keeps its root disk and the sign-ins on it; a Terraform replace drops them.
 
-1. Apply the platform module (it costs money, so the human runs it) and take the instance id from `terraform output -json instance_ids`.
-2. Add the governor entry to `apps/ci-runner-governor/config.json`, `workers`. Keep `idle_off_seconds` at 1800 or more: fleet-dispatch writes demand every 15 minutes, with a 40-minute end, and only for a worker with `fleet_place: true`, so the entry starts nothing before step 5.
-   ```json
-   {"host": "fleet-worker-1", "power": {"provider": "aws", "instance_id": "<instance id>", "region": "us-east-2",
-    "idle_off_seconds": 1800, "start_min_excess": 1, "max_hours_day": 12, "fallback_seconds": 3600,
-    "live": true}}
-   ```
-   Its price goes in `rates`, the one home of every host's $/h: `"fleet-worker-1": {"usd_per_hour": 0.076, "basis": "spot-estimate"}`.
-3. Add it under `fleet_workers`:
+1. Apply the platform module (the human runs it) and take the instance id from `terraform output -json instance_ids`.
+2. Add it under `fleet_workers`:
    ```yaml
    fleet-worker-1:
      ansible_host: <instance id>
@@ -61,12 +75,22 @@ The old token stops working at step 1, so the home's passes fail on the feed unt
      ansible_ssh_common_args: <the SSM ProxyCommand aws-spot-1 has>
      fleet_tailscale: true
      fleet_ssh_host: fleet-worker-1         # its tailnet name: fleet-dispatch ssh goes there
-     fleet_state_host: cachyos-x8664-main   # the workstation's tailnet name
-     fleet_power: governor
-     fleet_place: false                     # no fleet_repos: the group's list (no Unity repo) is its own
+     fleet_place: false                     # no fleet_repos: it takes the group's standard list
    ```
-4. Start it with the agent-web Infra page's "on" button and run the play. It joins the tailnet with the auth key from SOPS (role `tailscale-node`); then do the rest of "Add a worker", step 3.
-5. When the play prints `Ready`, set `fleet_place: true`.
+3. Start the instance and run the play. It joins the tailnet with the auth key from SOPS (role `tailscale-node`); then do the rest of "Add a worker", step 3.
+4. When the play prints `Ready`, set `fleet_place: true`. Not before pnpm and uv are on it: Ubuntu's apt carries neither, and `fleet_worker_packages_apt` has no installer for them yet, so the standard repo set's personal-sites and trader checks would fail there.
+
+## Headless harnesses
+
+`fleet_harnesses: [nim, ocfree, opencode-go]` lets a worker take items on those harnesses (the dotfiles-private harness map, `.config/agentctl/harnesses.json`), so canaries and trainee runs leave a hot workstation. nim, ocfree and opencode-go are opencode harnesses run inside their lane sandbox (srt). codex is never a worker harness: it runs on the workstation only (the human, 2026-11-19), so no worker holds a Codex login. On each pass dispatch asks the worker's own `fleet-dispatch harness-ready <names>` over ssh and places an item on a harness only while the answer reads it ready; `fleet-dispatch hosts` prints `runs <names>` or `cannot run <name>: <why>`. A run's srt settings are written on the worker (`fleet-dispatch harness-prep`), and a trainee run's patch stays in the worker's `~/.local/state/agentctl/dispatch/trainee/` until the holder's batch review fetches it.
+
+What the worker needs, and where it comes from:
+- opencode, bubblewrap, socat and npm: `fleet_worker_packages`.
+- srt, at the pin in the controller's dotfiles `.local/src/installation_scripts/packages.conf` (a fresh worker's checkout can predate it), installed only when the worker's version differs, by `tasks/harnesses.yml` into `~/.local` (on the PATH fleet-dispatch's ssh uses).
+- The harness map, each harness's eval config and its lane sandbox profile: the private overlay, so `gh auth login` and the overlay stow come first (step 3 of "Add a worker").
+- Each opencode harness's gateway key file (`~/.local/state/agentctl/fleet-*.key`): `tasks/harnesses.yml` copies it from the controller at the same path, mode 0600, never logged. A key the controller lacks is named in the play's report and skipped.
+
+After a change to `fleet_harnesses` or a key rotation, re-run the play with `--tags fleet-worker`, then check `fleet-dispatch hosts`.
 
 ## Check a worker
 
@@ -74,15 +98,40 @@ The old token stops working at step 1, so the home's passes fail on the feed unt
 - `fleet-sessions` lists a worker's sessions with their host; their targets read `<host>@lab/<session>:<window>`. It runs `agent-panel list --json` on the worker, so `fleet_host_run <host> agent-panel list --json` must exit 0 or 3 (3 is no sessions).
 - A worker that does not answer ssh takes nothing, and reap leaves its items running until it answers again.
 
+## CPU cap
+
+Role `agent-host-budget` (tag `agent-host-budget`, on `fleet_workers` and `desktop_workstations`) pins all agent work on a host to its inventory `agent_cpus`, a hard cpuset of about 85-90% of its CPUs. Agent work means every tmux pane, the agentctl lanes and the fleet timers. On a CI host, `ci_cpus` sits inside that cpuset, so agents and CI share one ceiling and the CPUs left over stay with the desktop and the OS. Root writes drop-ins under `/etc/systemd/user` and delegates `cpuset` to `user@.service`. Each user manager then reloads onto them, so running panes are capped with no restart. The play fails if any running pane's `EffectiveCPUs` is not `agent_cpus`. Apply: `ansible-playbook playbooks/site.yml --limit <host> --tags agent-host-budget`; on the workstation the become password is rbw `ansible_password` (`ansible/README.md`, Secrets), elsewhere add `-K`. Check: `systemctl --user show 'tmux-spawn-*.scope' -p EffectiveCPUs` on the host. The role also writes `agent_host_budget.prom`'s `agent_host_cpus` (the size of `agent_cpus`) to the host's node-exporter textfile directory; Prometheus rule `cc:host_class_reserved_cores{class="agents"}` reads it.
+
+## Host keys and NIC reservations
+
+Role `host-identity` (the last play in `site.yml`, tag `host-identity`; `fleet-worker` imports its known_hosts half) writes one block into `/etc/ssh/ssh_known_hosts` on each machine in `desktop_workstations`, `fleet_workers` and `fleet_controllers`. The block holds every one of those machines' `ssh_host_ed25519` from the inventory, under each name it may be dialed by: its inventory name, `ansible_host`, `fleet_ssh_host`, its `devices.yaml` name and IP, and both names with `.lan`. So a machine that is off when the play runs is still trusted, and the lease moving to any of them needs no new trust. Keys are never scanned off the network. The file is system-wide, so no user's `~/.ssh` is touched, and ssh accepts a key there even when a stale one sits in `~/.ssh/known_hosts`.
+
+The same play fails a host whose live host key is not its inventory `ssh_host_ed25519` (a rebuild), or whose NICs carry none of the MAC its `infrastructure/dhcp/devices.yaml` entry reserves (a new motherboard or dongle). The message names the line to change. The nightly `ansible-runner` check runs it on the LAN servers. Apply: `ansible-playbook playbooks/site.yml --limit <host> --tags host-identity -K`, then the same for every other roster machine after a key changes.
+
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
 |---|---|---|
 | `fleet-dispatch hosts` says `<host> did not answer over ssh` | The host is down, or the workstation's key is not on it | `ssh <ansible_user>@<ansible_host> true` from the workstation |
-| `<host> has no wt, no claude, or an agent-queue that does not forward` | The play has not run, the stow did not finish, or its dotfiles are older than the forwarding | Re-run the play (it pulls the dotfiles to main); check `~/.local/bin/wt`, `~/.local/bin/claude` and `~/.local/bin/agent-queue` on the host |
-| The cloud worker never starts with items waiting | No demand key: fleet-dispatch has no `CC_KUBE_CONTEXT`, a global gate holds, home is under its gate, or no waiting item is in its `fleet_repos` | `ci_governor_power_demand{host="fleet-worker-1"}`; the dispatch log's demand line says what it wrote and why |
-| The cloud worker stops with a session on it | fleet-dispatch stopped writing demand (the key ran out), or its `max_hours_day` | `systemctl --user status fleet-dispatch.timer` on the workstation; the governor log's stop line names the cause |
-| A session's `agent-queue` call prints `the state host ... did not answer over ssh` | The worker's key is not in the state host's `authorized_keys`, or its host key changed | Step 3 of "Add a worker"; re-run the play for the host key |
+| `<host> has no wt, no claude, or a store that is not a peer clone (store-sync join)` | The play has not run, the stow did not finish, or the store has not joined | Re-run the play and read its report; check `~/.local/bin/wt`, `~/.local/bin/claude` and `~/.agent/.sync/peer` on the host |
+| `<host>: N% memory free is under the 20% floor` | Something else on the host holds its memory (on razer-laptop, the freqtrade pods) | `free -m` and the top RSS on the host; move or shrink what holds it, or lower its `fleet_max_live`. Never lower the floor to get a session placed |
+| A session on a worker finishes its home-config item but cannot push, or `agent-land` there dies with `no token: FORGEJO_TOKEN unset, ...` | `~/.config/forgejo/token` is missing (the play has not run since the bot was added) or the token was revoked | Re-run the play: its last task says whether the token can push. A failing push check means rotate it ("Forgejo bot token") |
+| schedules-sync on a worker exits 1 with `curl: (22) ... 404` on a Forgejo repo | A private repo joined the feed's `forgejo_repos` and the bot `fleet-worker` has no read on it | Grant it read ("Forgejo bot token") and re-run `systemctl --user start schedules-sync` on that worker |
+| `fleet-lease status` on a worker says it cannot tell who holds the lease | Neither store remote answers from it: the sync key is not a deploy key on `kblack0610/.agent`, or Forgejo is down and `store.env` names no backup | `git -C ~/.agent ls-remote origin lease/fleet` on the worker; re-run the play for the key it prints |
+| The host-identity play fails `<host>'s ssh host key is not the inventory's` | The host was rebuilt and sshd made a new key | Set the `ssh_host_ed25519` it prints after checking it on the host's console or over ssh you already trust, merge, then re-run `--tags host-identity` on every roster machine |
+| The host-identity play fails `devices.yaml reserves ... which no NIC on <host> has` | Its NIC changed (motherboard swap, new dongle), so the next lease renewal moves it off its IP | Set the `mac` it lists in `infrastructure/dhcp/devices.yaml`, merge, then `dhcp sync` |
 | `fleet-dispatch hosts` says `no fleet workers`, or shows an old `fleet_place` | The workstation's dotfiles predate the upstream read, or its fetch of this repo fails | `git -C ~/dev/home/home-config fetch` must succeed; `fleet-dispatch hosts` fetches before it reads |
+| `fleet-dispatch hosts` on a worker holding the lease lists nobody | The worker has no `~/dev/home/home-config`, or its fetch fails, so it reads no roster | Re-run the play; on the worker `git -C ~/dev/home/home-config fetch forgejo master` must succeed |
 | `fleet-sessions` lists the worker as silent, `agent-panel` exits 127 | The play has not run since the role learned to build it, or the build failed | Re-run the play; `cargo build --release` in `~/.dotfiles/.local/src/agent-panel` on the worker shows the error |
+| `fleet-dispatch hosts` says `N stuck at start`, or the worker's panes sit on Claude Code's theme picker or a sign-in screen | The worker's dotfiles predate `fleet-dispatch start` running `claude-acct link` there, so its account dirs have no `hasCompletedOnboarding` and no shared settings; or its login shell mangled an ssh argument (zsh read a leading `=`, fixed in the same dotfiles change) | `git -C ~/.dotfiles pull --ff-only` on the worker, then `claude-acct link` there; close the stuck panes (`tmux -L lab kill-session -t <s>`) and reap requeues their items. A setup token in `~/.config/claude-acct/tokens/` means it is signed in: do not sign in by hand |
 | `Clone the public dotfiles` or a later pull fails with `Local modifications exist` or an SSH submodule fetch error | A copied `~/.dotfiles` has local edits or initialized submodules with stale SSH URLs | On the worker, inspect `git -C ~/.dotfiles status` and `git -C ~/.dotfiles submodule foreach git status`; preserve any submodule work before deinitializing. Stash parent-repo edits with `git -C ~/.dotfiles stash push -u`, then run `git -C ~/.dotfiles submodule deinit -f --all` and re-run the play. The role sets repo-local `fetch.recurseSubmodules=false` for later pulls; review the saved stash before restoring edits |
+| `agents.kblab.me` gives 502 after the lease moved | `agent-web-record` on the new holder could not patch the Endpoints: no `~/.config/schedules-sync/kubeconfig`, or `record-rbac.yaml` not reconciled; or the record names the holder but Traefik cannot reach its port 8790 (a host firewall: the workstation's `desktop-firewall` opens it; this role sets none, and razer-laptop ran none on 2026-11-17) | `journalctl --user -u agent-web` on the holder shows its line; `kubectl -n agents get endpoints agents` names the IP; re-run the play, then `systemctl --user restart agent-web` there |
+| The report says `the store did not take the sync key (...)` | The key is not a write deploy key on `kblack0610/.agent`, or Forgejo's ssh (`forge-primary.kblab.me:2222`, over the tailnet) does not answer from the worker | Add the printed key with write access (`forgejo-ops`); `ssh -i ~/.ssh/id_agent_sync -p 2222 git@forge-primary.kblab.me` on the worker answers with a greeting once it works |
+| The report says `store-sync join failed (...)` | Origin went away between the play's check and the join, or the clone or the move of the old dir failed (a `~/.agent.peer-new-*` or `~/.agent.pre-peer-*` in the way) | On the worker, `store-sync join` by hand shows the whole error, and `~/.agent/.sync/sync.log` has each JOIN and ERROR; fix it, re-run the play, then `agentctl reload`, since the join stopped the lanes |
+| The report says `store-sync join kept the old store at ~/.agent.pre-peer-<stamp>` | `~/.agent` was not a clone, was dirty, or held commits origin lacked, so the join took a fresh clone | `git -C ~/.agent.pre-peer-<stamp> log origin/master..` and `status` show what origin lacks; copy any queue or ask file still wanted into `~/.agent`, let `store-sync` push it, then delete the old dir |
+| The report says `the store did not take the sync key (Host key verification failed.)` | Forgejo's ssh host key changed, or store.env names a host other than `fleet_store_host` | Read the pod's `/data/ssh` ed25519 public key (apps/forgejo) and update `fleet_store_host_key` in the role defaults, or bring `fleet_store_host` and store.env back to the same host; never trust a scanned key |
+| `<host> ... cannot run nim: its key file ~/.local/state/agentctl/fleet-nim.key is not readable` | The play has not copied that harness's key, or the controller lacks it | Run the play from a controller that holds the key (`ls ~/.local/state/agentctl/` there); its report names a missing one |
+| `cannot run <harness>: no harness map at ...`, `its config ... is not readable` or `its lane sandbox ... is missing` | The private overlay is not stowed on the worker | `gh auth login` on the worker, then re-run the play |
+| `cannot run <harness>: lane sandbox '<name>' cannot hold <harness>: ...` | srt, bwrap or socat is missing on the worker | Re-run the play; its report says when the srt pin was not found in the controller's dotfiles |
+| `<harness>: no answer from its fleet-dispatch harness-ready (an older fleet-dispatch there)` | The worker's dotfiles are behind the dispatcher's | `git -C ~/.dotfiles pull` on the worker |
+| A pane runs on CPUs outside `agent_cpus` though `systemctl --user show <scope> -p AllowedCPUs` names them | The user manager has no `cpuset` controller (`cat /sys/fs/cgroup/user.slice/user-<uid>.slice/user@<uid>.service/cgroup.controllers` lacks it), so systemd records AllowedCPUs and nothing applies it; razer-laptop on 2026-11-18 | Re-run `--tags agent-host-budget`: it delegates cpuset and re-execs the user manager, which keeps every unit running |

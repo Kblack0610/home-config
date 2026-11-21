@@ -1,0 +1,51 @@
+---
+# GitHub's SSH host keys for a runner user, shared by the Unity pool
+# (tasks/unity.yml, the actions-runner user) and the linux-ci user that runs the light, heavy, Forgejo and repo seats (the CI runners play in site.yml).
+# Each slot's HOME is its own dir, so the jobs' ssh-agent action writes GitHub's
+# host keys there; ssh itself reads known_hosts from the user's passwd home
+# instead, and refuses the submodule clone without them ("Host key verification
+# failed"). The keys come from GitHub's meta API at apply time.
+# Authenticated with vault_github_pat: GitHub allows 60 anonymous API calls an
+# hour per IP, and every machine on the LAN shares one IP. The PAT, not the
+# control node's gh, so the in-cluster ansible-runner (no gh) can run it too.
+# Per host, not run_once: this file is imported under a `when` (tasks/unity.yml), and a run_once task that its batch's first host skips is skipped on every host, leaving `_github_meta` without `json`. One authenticated call per host is well inside the PAT's 5000/h; retries absorb a transient 5xx or 429.
+# Vars: github_known_hosts_user, github_known_hosts_group, github_known_hosts_home.
+- name: Read GitHub's SSH host keys
+  ansible.builtin.uri:
+    url: https://api.github.com/meta
+    headers:
+      Authorization: "Bearer {{ vault_github_pat }}"
+      Accept: application/vnd.github+json
+  no_log: true
+  delegate_to: localhost
+  become: false
+  check_mode: false
+  register: _github_meta
+  retries: 3
+  delay: 5
+  until: _github_meta.status == 200 and (_github_meta.json.ssh_keys | default([]) | length > 0)
+
+- name: Create the runner user's .ssh
+  ansible.builtin.file:
+    path: "{{ github_known_hosts_home }}/.ssh"
+    state: directory
+    owner: "{{ github_known_hosts_user }}"
+    group: "{{ github_known_hosts_group }}"
+    mode: "0700"
+
+- name: Trust GitHub's host keys for the runner user
+  ansible.builtin.known_hosts:
+    path: "{{ github_known_hosts_home }}/.ssh/known_hosts"
+    name: github.com
+    key: "github.com {{ item }}"
+  loop: "{{ _github_meta.json.ssh_keys }}"
+  loop_control:
+    label: "{{ item.split(' ')[0] }}"
+
+- name: Own the runner user's known_hosts
+  ansible.builtin.file:
+    path: "{{ github_known_hosts_home }}/.ssh/known_hosts"
+    owner: "{{ github_known_hosts_user }}"
+    group: "{{ github_known_hosts_group }}"
+    mode: "0644"
+  when: not ansible_check_mode

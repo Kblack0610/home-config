@@ -17,11 +17,15 @@ OrcaSlicer in the browser at `https://slicer.kblab.me` (linuxserver image, Selki
 
 | Printer | Machine | Process | Filament |
 |---------|---------|---------|----------|
-| Neptune 4 Pro, 0.4 nozzle | `Elegoo Neptune 4 Pro (0.4 nozzle)-OpenNept4une` | `0.20mm Standard ...(0.4 nozzle)-OpenNept4une`, `0.20mm PETG ...` | `Elegoo Generic PLA-OpenNept4une` (210), `Elegoo Generic PETG-OpenNept4une` (240) |
+| Neptune 4 Pro, 0.4 nozzle | `Elegoo Neptune 4 Pro (0.4 nozzle)-OpenNept4une` | the ladder `0.08mm Extra Fine`, `0.12mm Fine`, `0.16mm Optimal`, `0.20mm Standard`, `0.24mm Draft`, `0.28mm Extra Draft ...(0.4 nozzle)-OpenNept4une`, plus `0.20mm PETG ...`, `0.12mm Seashell ...`, `0.16mm Seashell ...` | `Elegoo Generic PLA-OpenNept4une` (210), `Elegoo Generic PETG-OpenNept4une` (240), `Elegoo Silk PLA-OpenNept4une` (220) |
 | Neptune 4 Pro, 0.8 nozzle | `Elegoo Neptune 4 Pro (0.8 nozzle)-OpenNept4une` | `0.40mm Standard ...(0.8 nozzle)-OpenNept4une` | same |
-| Bambu Lab A1 | `Bambu Lab A1 (0.4 nozzle)-LAN` | system presets | system presets |
+| Bambu Lab A1 | `Bambu Lab A1 (0.4 nozzle)-LAN` | system presets (the full Bambu ladder, 0.08 to 0.28), `0.12mm Seashell @BBL A1-LAN`, `0.16mm Seashell @BBL A1-LAN` | system presets (silk: `Bambu PLA Silk @BBL A1`) |
 
-Both Neptune machine presets carry the OpenNept4une `PRINT_START ... BED_MESH=adaptive` / `PRINT_END` gcode and firmware retraction. The two Neptune filaments show only for the Neptune (`printer_model` condition).
+Both Neptune machine presets carry the OpenNept4une `PRINT_START ... BED_MESH=adaptive` / `PRINT_END` gcode and firmware retraction. The Neptune filaments show only for the Neptune (`printer_model` condition).
+
+The Neptune ladder mirrors the Bambu one: every rung is the `0.20mm Standard` tuning (accelerations, jerk, 165 mm/s, filename) with its layer height, a first layer of 0.2 mm (0.28 for the two drafts), top and bottom shells kept near 1.0 and 0.8 mm, and a slower outer wall on the two fine rungs (120 and 140 mm/s). Each inherits `0.20mm Standard @Elegoo N4Pro 0.4 nozzle`, since a user preset cannot inherit another user preset.
+
+The two `0.12mm Seashell` processes are one look for small organic prints in silk PLA (the 2026-11 wedding shells), kept identical across printers so a set matches: 0.12 mm layers, Arachne, 3 walls, outer wall 50 mm/s for the sheen, back seam with scarf, 15% gyroid, organic tree supports from the plate only. `Elegoo Silk PLA` adds 220 C, 8 mm3/s, fan 80-100% and a 10 s minimum layer time for the spikes. The `0.16mm Seashell` pair is the middle rung for calibration, between Seashell and Standard: 0.16 mm layers, outer wall 80 and inner 150 mm/s, 6 top and 4 bottom layers (the same shell thickness), everything else as the 0.12.
 
 Every Neptune process names its gcode `{input_filename_base}_{nozzle_diameter[0]}n_{layer_height}mm_{filament_type[0]}_{print_time}.gcode`, for example `Benchy_0.4n_0.2mm_PLA_50m22s.gcode`. The layer height in a name says nothing about the nozzle; to check an old file, read `nozzle_diameter` from `curl -s 'http://192.168.1.54:7125/server/files/metadata?filename=<name>'`.
 
@@ -30,7 +34,7 @@ Every Neptune process names its gcode `{input_filename_base}_{nozzle_diameter[0]
 1. Change the file under `profiles/` and open a PR. Keep the `@A1_...@` placeholders in the A1 machine preset; the real code is filled from `bambu-a1-secret.yaml` at start.
 2. After Flux applies it, restart the app so the init container copies the new files in: `kubectl --context home-k3s -n orcaslicer rollout restart deploy/orcaslicer`. `apps/print-service` reads the ConfigMap mount live.
 
-Every start overwrites the managed presets, so a preset changed only in the browser slicer is lost at the next restart. Presets with other names are left alone. Old strays were moved to `user/default/_retired-2026-11-04/` on the hostPath.
+Every start overwrites the managed presets, so a preset changed only in the browser slicer is lost at the next restart. Presets with other names are left alone. Those, and the rest of the app state, live on the hostPath, which `apps/nas` `app-config-backup` copies to the 8TB drive every Sunday (weekly snapshots under `/mnt/backup-8t/app-config-snapshots/`). Old strays were moved to `user/default/_retired-2026-11-04/` on the hostPath.
 
 A new preset needs a line in the init container's list in `deployment.yaml` and a `key=path` entry in `kustomization.yaml` (ConfigMap keys cannot hold spaces).
 

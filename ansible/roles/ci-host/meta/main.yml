@@ -1,0 +1,24 @@
+---
+galaxy_info:
+  role_name: ci_host
+  author: home-config
+  description: >-
+    Host prep for every self-hosted GitHub Actions runner slot on a Linux CI
+    host, by the host's ci_caps: the packages light and heavy jobs need, the
+    Unity user, machine id, asset libraries and editor images, docker, and the
+    disk guard and job-started hook every slot runs. The CPU and memory caps
+    come from ci-host-budget.
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: ArchLinux
+      versions:
+        - rolling
+    - name: Ubuntu
+      versions:
+        - noble
+dependencies:
+  # The budget runs under every entry tag the role's parts answer to, as it did when
+  # each old host role carried it under its own play's tag.
+  - role: ci-host-budget
+    tags: [linux-ci, unity-ci, unity-ci-host]

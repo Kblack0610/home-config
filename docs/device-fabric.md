@@ -30,10 +30,10 @@ POST https://status.kblab.me/api/v1/endpoints/fleet_<device>/external?success=tr
 Authorization: Bearer <FLEET_TOKEN>
 ```
 
-Each machine's status bar (waybar/sketchybar) polls `/api/v1/endpoints/statuses`, filters the `fleet` group, and judges freshness **itself** - green if every device in `FLEET_ROSTER` reported success within 180s, amber if one is stale/never-reported, red if the API is unreachable. gatus does no server-side expiry; the reader's roster is the denominator (a configured-but-never-enrolled host shows amber, not silently-green).
+Each machine's status bar (waybar/sketchybar) polls `/api/v1/endpoints/statuses`, filters the `fleet` group, and judges freshness **itself** - green if every device on the roster (`fleet.kblab.me/roster`, rendered from the `fleet_pulse` inventory group) reported success within 180s, amber if one is stale/never-reported, red if the API is unreachable. gatus does no server-side expiry; the roster is the denominator (a configured-but-never-enrolled host shows amber, not silently-green).
 
 - **Pushers:** `push.sh` (Linux systemd timer), launchd (Mac), Scheduled Task (Windows).
-- **Per-machine config:** `~/.config/fleet-pulse/env` (`GATUS_BASE`, `FLEET_ROSTER`) + the token, from the `~/.dotfiles-private` overlay - never in the public repo.
+- **Per-machine config:** `~/.config/fleet-pulse/env` (`GATUS_BASE`) + the token, from the `~/.dotfiles-private` overlay - never in the public repo.
 - **Token:** one shared bearer, SOPS-encrypted in `apps/gatus/fleet-token-secret.sops.yaml`.
 - Full detail: `~/.dotfiles/.local/src/fleet-pulse/README.md`.
 - Adding a Windows PC (SSH bootstrap, remote enroll, S4U task): [`windows-machines.md`](./windows-machines.md).
@@ -51,9 +51,7 @@ Self-hosted [Headwind MDM](https://h-mdm.com) Community at `https://mdm.kblab.me
 
 Android devices don't push heartbeats themselves, so `headwind-fleet-bridge` (a long-running pod in the `headwind-mdm` namespace) reads Headwind's `devices` table every 60s and pushes `fleet_<device>` heartbeats to gatus - putting tablets in the SAME `fleet` health view as the computers. Read-only; tolerates a gatus 404 for not-yet-declared devices.
 
-Adding an enrolled tablet to the view = two edits:
-1. `apps/gatus/configmap.yaml` - an `external-endpoints` entry (`group: fleet`, `name: <device>`).
-2. `FLEET_ROSTER` in `~/.config/fleet-pulse/env` on each reader machine.
+Adding an enrolled tablet to the view = one edit: a `fleet_pulse_devices` entry (`group: android`, `name: <device>`) in `ansible/inventory.yml`, then `python3 scripts/render-fleet-pulse.py`.
 
 Full detail: `apps/headwind-fleet-bridge/README.md`.
 
@@ -69,7 +67,7 @@ Full detail: `apps/headwind-fleet-bridge/README.md`.
 ## Registry conventions
 
 - **Network identity:** `infrastructure/dhcp/devices.yaml` (Android tablets = `mobile` range `.50-.79`).
-- **Liveness:** a gatus `fleet` external-endpoint (push) or an `iot-fleet`/`mac-machines` probe (pull), plus `FLEET_ROSTER` on readers.
+- **Liveness:** a gatus `fleet` external-endpoint (push) or an `iot-fleet`/`mac-machines` probe (pull), both rendered from the `fleet_pulse` inventory group with the roster.
 - **Meta-index:** `docs/homelab-catalog.md` ("where does X run, who reconciles it").
 
 ## Status (2026-07-14)
@@ -77,7 +75,7 @@ Full detail: `apps/headwind-fleet-bridge/README.md`.
 | Piece | State |
 |-------|-------|
 | fleet-pulse liveness | **live** (Linux pushing; Mac/Windows pushers authored, apply per-host) |
-| gatus `fleet` group | **live** (`linux-cachyos`/`windows-media` declared) |
+| gatus `fleet` group | **live** (`linux-cachyos` declared) |
 | Headwind MDM | **live**, LAN-only, tablets enrolled (Lenovo Tab wall panels) |
 | headwind-fleet-bridge | **live**, mirroring tablet liveness into the fleet group |
 | FleetDM | **decommissioned** (2026-07) - namespace/manifests/osquery-agent role removed; `fleet.kblab.me` now the gatus fleet dashboard |

@@ -78,3 +78,27 @@ unity_ci_mac_prune_interval_seconds: 3600
 # NodeDiskLow trips at 20% free.
 unity_ci_mac_prune_tree_days: 7
 unity_ci_mac_prune_free_pct: 25
+
+# tasks/accelerator.yml: the Unity Accelerator (cache server) for m1-playground-mac's build
+# trees, the Mac's counterpart of ci-host's (unity_ci_accelerator). Each game's tree, and its
+# iOS tree, imports the same assets, and a pruned tree re-imports cold (up to an hour). The
+# runner reaches it on localhost through UNITY_CACHE_SERVER in its .env, which the
+# playground's build scripts pass to Unity (scripts/test/editor-path.sh).
+unity_ci_mac_accelerator_version: v1.6.19+g101b198b
+# sha256 of the dmg, read 2026-11-19; Unity publishes no checksum for the macOS installer.
+unity_ci_mac_accelerator_sha256: fbe1ad6e7d02774fc1fc05be6393ecae990517bdfbdedda2c557fa2b4a711451
+unity_ci_mac_accelerator_install_dir: /Applications/Unity/accelerator
+unity_ci_mac_accelerator_storage_dir: /Library/Application Support/Unity/accelerator
+unity_ci_mac_accelerator_endpoint: 127.0.0.1:10080
+unity_ci_mac_accelerator_scratch: "{{ ansible_env.HOME }}/Library/Caches/unity-accelerator"
+# Cap and floors: it evicts at 40 GiB, or under 21% free (to 24%): below ci-tree-prune's 25%
+# floor, so idle trees go first, and above NodeDiskLow's 20%.
+unity_ci_mac_accelerator_max_bytes: 42949672960
+unity_ci_mac_accelerator_min_free_percent: 21
+unity_ci_mac_accelerator_evict_until_free_percent: 24
+# The hand-registered runner whose .env gets UNITY_CACHE_SERVER, and its LaunchAgent.
+unity_ci_mac_accelerator_runner: "{{ ansible_env.HOME }}/actions-runner-playground"
+unity_ci_mac_accelerator_runner_label: actions.runner.BlackNBrownStudios-unity-core-playground.m1-playground-mac
+
+# The build keychain script (tasks/signing-keychain.yml).
+unity_ci_mac_keychain_script: "{{ ansible_env.HOME }}/.local/bin/ensure-build-keychain.sh"

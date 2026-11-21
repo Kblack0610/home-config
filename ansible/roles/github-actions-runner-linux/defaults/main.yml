@@ -70,12 +70,17 @@ gh_runner_labels:
   - x64
   - docker
 
-# The labels ci-runner-governor swaps for a withheld one (apps/ci-runner-governor/config.json):
+# The labels ci-runner-governor swaps for a withheld one (inventory ci_labels, rendered into topology.json):
 # a runner carrying any of gh_runner_withheld_labels keeps gh_runner_withheld_label, this
 # slot's kind, in their place when an apply resets its labels. Empty: no governor.
 gh_runner_governed_labels: []
 gh_runner_withheld_labels: []
 gh_runner_withheld_label: ""
+# Labels only the governor sets (its lend mark, unity-lent): a runner carrying one keeps it.
+gh_runner_kept_labels: []
+# Register withheld (gh_runner_withheld_label in place of the governed labels), for a seat that
+# runs only once the governor lends it a slot: it never takes a job before the governor sees it.
+gh_runner_register_withheld: false
 
 # System packages mirroring what platform/tools/setup-mac-runner.sh installs on
 # Mac (node@20, pnpm, jq) plus Linux-specific extras.

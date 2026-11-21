@@ -43,19 +43,10 @@ spec:
               drop:
                 - ALL
           env:
-            # 1 logs and exports every decision and changes no runner. Dry run
-            # since 2026-11-02: it held at most 3 of 13 slots while about 65 jobs
-            # waited, so every registered slot carries the pool labels and none is
-            # withheld; its logs decide by 2026-11-09 whether
-            # the verdicts go live. The pod stays either way: a host pin (machine-mode
-            # on the workstation) is acted on even in a dry run. The token
-            # is the control node's `gh auth token` (admin:org, what the Unity
+            # The token is the control node's `gh auth token` (admin:org, what the Unity
             # pool play registers runners with), SOPS-encrypted the same way as
             # apps/github-runner-exporter's; after `gh auth refresh` re-run that
-            # recipe with --from-literal=github-token="$(gh auth token)". A standby
-            # host whose power block says "live": true is acted on for real anyway.
-            - name: DRY_RUN
-              value: "1"
+            # recipe with --from-literal=github-token="$(gh auth token)".
             - name: GITHUB_TOKEN
               valueFrom:
                 secretKeyRef:
@@ -85,11 +76,17 @@ spec:
             - name: app
               mountPath: /app
               readOnly: true
-            # The Infra page's On/Off button (agent-web POST /api/cloud-runner) applies
-            # this ConfigMap; it is not in git, so Flux leaves it alone, and optional, so
-            # the pod starts without it. The kubelet refreshes it within about a minute.
+            # Human and fleet intent (agent-web's power buttons, machine-mode's pin and
+            # reservation), each merge-patched on its own key (override.schema.json); it is
+            # not in git, so Flux leaves it alone, and optional, so the pod starts without
+            # it. The kubelet refreshes it within about a minute.
             - name: override
               mountPath: /override
+              readOnly: true
+            # The slot layout (apps/ci-topology, rendered from ansible/inventory.yml):
+            # which hosts carry Unity slots, how many, and the build-slot groups.
+            - name: topology
+              mountPath: /topology
               readOnly: true
           resources:
             requests:
@@ -112,6 +109,9 @@ spec:
           configMap:
             name: ci-runner-governor-override
             optional: true
+        - name: topology
+          configMap:
+            name: ci-topology
 ---
 apiVersion: v1
 kind: Service
@@ -128,6 +128,26 @@ spec:
       port: 9321
       targetPort: 9321
   type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ci-runner-governor-lease
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: ci-runner-governor
+spec:
+  # The Forgejo seats' supervisors (ansible role forgejo-runner-linux) long-poll /lease for up
+  # to 300s, past Traefik's 60s timeout, so a NodePort and no ingress: LAN hosts ask at
+  # pi5-master's address (forgejo_runner_lease_url). Only /lease is for them.
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: ci-runner-governor
+  ports:
+    - name: lease
+      port: 9321
+      targetPort: 9321
+      nodePort: 30321
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor

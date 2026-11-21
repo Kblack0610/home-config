@@ -93,30 +93,7 @@ hp-victus (192.168.1.243) → SSH-reachable from workstation
 
 ## Worked example 3: a new bare-metal node joins
 
-Goal: a fresh Intel NUC becomes a working k3s agent.
-
-```
-1. PXE (day 0)
-   - Plug NUC into switch, power on, PXE-boot from pc-home-cachy-main workstation
-   - infrastructure/pxe-server/install.sh serves an Arch kickstart
-   - kickstart installs CachyOS, enables sshd, seeds kblack0610's authorized_keys
-   - node reboots into CachyOS, reachable over SSH; PXE installs no k3s
-
-2. Ansible (day 1+)
-   - Add a host entry to ansible/inventory.yml under linux_bare_metal
-   - Seed ansible/group_vars/linux_bare_metal/vault.sops.yaml if any secret is needed
-   - k3s nodes: site.yml --tags k3s joins it at k3s_install_version (roles/k3s-agent)
-   - Optionally bind roles: github-actions-runner-linux, etc.
-   - Run: ansible-playbook playbooks/site.yml --limit <host> --check --diff
-   - Apply, then verify via systemctl / kubectl get nodes
-
-3. Flux (if it's a k3s node)
-   - Kubernetes sees the node via kubelet registration
-   - Flux scheduler places pods that match the node's labels / capacity
-   - New labels (e.g., kblab.me/game-server) let pods with a matching nodeSelector land there
-```
-
-`roles/k3s-agent` owns every k3s install and upgrade; PXE only installs the OS.
+PXE installs the OS (day 0), Ansible configures the host and joins it to k3s (day 1+; `roles/k3s-agent` owns every k3s install and upgrade), and Flux schedules pods onto it by its labels. The steps, BIOS to the first CI job, and their troubleshooting: [runbooks/bare-metal-host.md](runbooks/bare-metal-host.md).
 
 ## GPU wiring
 
@@ -130,7 +107,7 @@ Three patterns coexist. The decision tree for new apps lives in `docs/app-lifecy
 
 | Pattern | When to use | Example | Mechanics |
 |---|---|---|---|
-| `PVC` + `storageClassName: local-path` | **Default for app state** (databases, indexes, configs, uploads) | `apps/forgejo/pvc.yaml` (20Gi), `apps/qdrant/pvc.yaml` (5Gi), `apps/karakeep/pvc.yaml` (20Gi + 5Gi) | k3s built-in local-path-provisioner creates a PV under `/var/lib/rancher/k3s/storage/` on whichever node first schedules the pod, then pins the PV there via node affinity. Subsequent pods follow automatically. No `nodeSelector` required, no host-side `mkdir`. RWO; one node at a time. |
+| `PVC` + `storageClassName: local-path` | **Default for app state** (databases, indexes, configs, uploads) | `apps/qdrant/pvc.yaml` (5Gi), `apps/karakeep/pvc.yaml` (20Gi + 5Gi) | k3s built-in local-path-provisioner creates a PV under `/var/lib/rancher/k3s/storage/` on whichever node first schedules the pod, then pins the PV there via node affinity. Subsequent pods follow automatically. No `nodeSelector` required, no host-side `mkdir`. RWO; one node at a time. |
 | `hostPath: /mnt/nas/...` | Data the user wants to reach over SMB from outside the cluster (Finder, etc.) | `apps/immich/server-deployment.yaml` (`/mnt/nas/private/immich/upload`), `apps/gatus/deployment.yaml` (`/mnt/nas/private/gatus`) | The path is a real directory on `asus-laptop`'s local disk. The `apps/nas/` Samba pod (also on `asus-laptop`, with `hostNetwork: true`) re-exports `/mnt/nas/{public,private}` over SMB on the LAN. Same physical bytes — Samba is a view, not a separate device. |
 | `hostPath: /etc/localtime`, `/dev/dri`, etc. | **Host resources only** (timezone file, GPU/USB devices, tmpfs sockets) | every deployment that needs a stable wall clock; AMD-GPU apps on `asus-laptop` (privileged pods) | Tied to host inode/device — not interchangeable with PVCs. |
 
@@ -146,7 +123,7 @@ Partial graph — focuses on the dependencies an agent is most likely to hit dur
 
 ```
 litellm (in-cluster, hp-victus)
-  -> cloud upstreams only: Gemini, Lazer, OpenCode Go and NVIDIA NIM (no LAN model hosts)
+  -> cloud upstreams only: Gemini, Lazer, OpenCode Go and the free tiers: NVIDIA NIM, Groq, Cloudflare Workers AI, OpenRouter (no LAN model hosts)
 
 home-assistant → mosquitto (MQTT broker, in-cluster)
                 → mqtt2prom → monitoring (Prometheus)
@@ -170,10 +147,8 @@ LAN apps behind AdGuard rewrite (*.kblab.me → 192.168.1.124):
   hass, grafana, prometheus, slicer, finance, git, neptune, gatus, ...
        → Traefik → target Service
 
-Apex redirect (kblab.me → HA Launcher):
-  kblab.me → Traefik → home-assistant-apex Ingress
-       → `kblab-apex-redirect` Middleware (RedirectRegex)
-       → 307 → https://hass.kblab.me/lovelace/launcher
+Front door (kblab.me, a list of every system):
+  kblab.me -> Traefik -> front-door Ingress -> nginx (apps/front-door)
 ```
 
 Gatus (`apps/gatus/`) monitors every endpoint in this graph — the Gatus configmap is the concrete enumeration of "what depends on what network-reachability-wise."
@@ -182,7 +157,7 @@ Gatus (`apps/gatus/`) monitors every endpoint in this graph — the Gatus config
 
 | Component | What goes down immediately | What stays up |
 |-----------|----------------------------|---------------|
-| `pi5-master` (k3s server) | Every k3s pod on every node - no scheduler, no API | All bare-metal services: Mac runners, light/heavy CI runner slots on razer-laptop. OpenWRT DHCP/DNS. AdGuard Pi3. |
+| `pi5-master` (k3s server) | Every k3s pod on every node - no scheduler, no API | All bare-metal services: Mac runners. OpenWRT DHCP/DNS. AdGuard Pi3. |
 | OpenWRT router (192.168.1.1) | DHCP new-client onboarding, DNS resolution via the router's dnsmasq | Static IPs keep routing LAN-to-LAN. External internet is gone (OpenWRT is the gateway). AdGuard Pi3 keeps answering for clients that hit it directly. |
 | AdGuard Home (pi3, 192.168.1.193) | **All DNS for every client**, not just `*.kblab.me`. The router runs `no-resolv` with AdGuard as its only upstream, so dnsmasq has nothing to fall back to and returns SERVFAIL for anything not already cached. | Established connections and anything addressed by IP. dnsmasq keeps answering `/lan/` names, `/etc/hosts`, and its static domain entries (`nas.lan`, `zomboid-play.kblab.me`, `playground-play.kblab.me`) from its own config. |
 | NAS (asus-laptop pod) | Actual Budget backup jobs, Jellyfin media, Immich library | Home Assistant (no NAS dep), Forgejo (backups queue, app keeps running) |

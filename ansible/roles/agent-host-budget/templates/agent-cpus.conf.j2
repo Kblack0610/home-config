@@ -1,0 +1,4 @@
+# Managed by ansible (agent-host-budget). Agent work on this host uses at most
+# CPUs {{ agent_cpus }}; CPUs outside it stay with the desktop, the OS and k3s.
+[{{ item.split('.')[-1] | capitalize }}]
+AllowedCPUs={{ agent_cpus }}

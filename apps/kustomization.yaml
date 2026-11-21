@@ -14,7 +14,9 @@ resources:
   - ansible-runner
   - binks-api
   - blackbox-exporter
+  - ci-artifacts
   - ci-runner-governor
+  - ci-topology
   - cloudflared-public-sites
   - cluster-janitor
   - coredns
@@ -23,7 +25,6 @@ resources:
   - fleet-exporter
   - flux-audit
   - forgejo
-  - forgejo-mirror-exporter
   - feed-ingest
   - frigate
   - github-runner-exporter
@@ -71,6 +72,7 @@ resources:
   # Public sites (Cloudflare tunnel → Traefik → service)
   - playground-server
   - apps-nav
+  - front-door
   - game-registry
   - portfolio
   - bnb-studios

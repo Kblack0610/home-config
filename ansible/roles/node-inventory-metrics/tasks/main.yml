@@ -33,6 +33,7 @@
 
         [Service]
         Type=oneshot
+        Environment="NODE_INVENTORY_KEEP={{ node_inventory_metrics_agent_comms | join(' ') }}"
         Nice=19
         IOSchedulingClass=idle
         TimeoutStartSec=50s

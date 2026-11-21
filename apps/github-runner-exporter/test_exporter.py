@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Offline tests for exporter.py: canned GitHub, Forgejo and Kubernetes responses, no network.
+"""Offline tests for exporter.py: canned GitHub and Forgejo responses, no network.
 
 Covers the logic a quiet afternoon cannot show on the live API: a busy runner
 gets the job it is running, a queued job and a job-less ghost run show as
-waiting, a never-registered roster slot is a `missing` row, and a failed
+waiting, a never-registered topology slot is a `missing` row, and a failed
 source makes runners absent and suppresses missing rows instead of reading as
 offline. Stdlib only; CI runs it in the checks workflow.
 """
@@ -12,21 +12,37 @@ import json
 import os
 import re
 import sys
+import tempfile
 import threading
 import time
 import unittest
 import urllib.error
 from unittest import mock
 
+TOPOLOGY = {"hosts": {
+    "box": {"site": "local", "slots": [
+        {"name": "box-light-1", "caps": ["light"], "repo": "acme/web"},
+        {"name": "box-light-2", "caps": ["light"], "repo": "acme/web"},
+        {"name": "box-unity-pool-1", "caps": ["unity"]},
+        *({"name": f"box-forgejo-{n}", "caps": ["forgejo"], "forge": "forgejo"} for n in (1, 2, 3))]},
+    "gone": {"site": "cloud", "full": True, "slots": [{"name": "gone-unity-pool-1", "caps": ["unity"]}]},
+}}
+# The label vocabulary is the rendered one's (ansible/inventory.yml ci_labels).
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "ci-topology", "topology.json")) as _f:
+    TOPOLOGY["labels"] = json.load(_f)["labels"]
+_topology = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False)
+json.dump(TOPOLOGY, _topology)
+_topology.close()
 os.environ.update(
     RUNNER_ORGS="acme",
     RUN_REPOS="acme/web acme/game",
-    RUNNER_ROSTER="box:light:2 box:unity:1 gone:unity:1",
-    CLOUD_HOSTS="gone",
+    TOPOLOGY=_topology.name,
     RECENT_PER_REPO="2",
 )
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import exporter  # noqa: E402
+
+os.unlink(_topology.name)  # read once, at import
 
 T0 = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 600))
 T1 = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 540))
@@ -131,8 +147,9 @@ class ExporterTest(unittest.TestCase):
     def test_busy_runner_carries_its_job(self):
         (row,) = [r for r in rows(self.render(), "github_runner_state") if 'name="box-unity-pool-1"' in r]
         for want in ('state="running"', 'repo="game"', 'workflow="Tests"', 'job_name="PlayMode 1"',
-                     'branch="main"', 'url="https://x/job/1"', 'host="box"', 'pool="unity"'):
+                     'branch="main"', 'url="https://x/job/1"', 'host="box"'):
             self.assertIn(want, row)
+        self.assertNotIn("pool=", row)  # the kind it runs is ci_runner_job's, its caps pool_slot's
         self.assertGreaterEqual(int(row.rsplit(" ", 1)[1]), 590)
 
     def test_busy_runner_and_its_queued_sibling_carry_the_pr(self):
@@ -158,12 +175,56 @@ class ExporterTest(unittest.TestCase):
         state = rows(out, "github_runner_state")
         self.assertTrue(any('name="box-light-1"' in r and 'state="idle"' in r for r in state))
         self.assertTrue(any('name="box-light-2"' in r and 'state="offline"' in r for r in state))
-        # box:light has 2 registered (one offline) -> nothing missing there;
-        # gone:unity has none -> one missing row.
+        # box's slots are all registered (one offline) -> nothing missing there;
+        # gone-unity-pool-1 never registered -> one missing row, named for its slot.
         missing = [r for r in state if 'state="missing"' in r]
         self.assertEqual(len(missing), 1)
-        self.assertIn('host="gone"', missing[0])
+        for want in ('name="gone-unity-pool-1"', 'host="gone"', 'scope="topology"'):
+            self.assertIn(want, missing[0])
+        self.assertIn('github_runner_pool_slot{name="gone-unity-pool-1",host="gone",site="cloud",state="missing",'
+                      'scope="topology",forge="github",pool="unity"} 0', out)
         self.assertIn('github_runners_by_state{state="missing",forge="github"} 1', out)
+
+    def test_a_slot_with_several_caps_counts_once_per_cap(self):
+        flex = {"host": "box", "caps": ["light", "unity"], "repo": None, "forge": "github"}
+        with mock.patch.dict(exporter.SLOTS, {"box-unity-pool-1": flex}):
+            out = self.render()
+        slot = [r for r in rows(out, "github_runner_pool_slot") if 'name="box-unity-pool-1"' in r]
+        self.assertEqual(len(slot), 2)
+        self.assertTrue(any('pool="light"' in r and 'state="running"' in r for r in slot))
+        self.assertTrue(any('pool="unity"' in r and 'state="running"' in r for r in slot))
+        (st,) = [r for r in rows(out, "github_runner_state") if 'name="box-unity-pool-1"' in r]
+        self.assertNotIn("pool=", st)  # no first cap: pool_slot has one row per cap
+        self.assertIn('github_runner_pool_expected{host="box",pool="light"} 3', out)
+        self.assertIn('github_runner_pool_expected{host="box",pool="unity"} 1', out)
+        # box-light-1 and the busy flex slot are online in light; box-light-2 is offline.
+        self.assertIn('github_runner_pool_online{host="box",pool="light"} 2', out)
+        self.assertIn('github_runner_pool_online{host="box",pool="unity"} 1', out)
+
+    def test_a_missing_slot_has_a_pool_slot_row_per_cap(self):
+        slot = [r for r in rows(self.render(), "github_runner_pool_slot") if 'name="gone-unity-pool-1"' in r]
+        self.assertEqual(slot, ['github_runner_pool_slot{name="gone-unity-pool-1",host="gone",site="cloud",'
+                                'state="missing",scope="topology",forge="github",pool="unity"} 0'])
+
+    def test_ci_runner_job_names_the_busy_runners_kind(self):
+        # PlayMode 1 lists no labels, so box-unity-pool-1's one cap says it; idle box-light-1 has no row.
+        self.assertEqual(rows(self.render(), "ci_runner_job"), ['ci_runner_job{runner="box-unity-pool-1",kind="unity"} 1'])
+
+    def test_ci_runner_job_kind_comes_from_the_jobs_labels_on_a_many_cap_slot(self):
+        flex = {"host": "box", "caps": ["unity", "light", "heavy"], "repo": None, "forge": "github", "borrows": None}
+        job = FAKE["repos/acme/game/actions/runs/10/jobs?per_page=100"]["jobs"][0]
+        with mock.patch.dict(exporter.SLOTS, {"box-unity-pool-1": flex}):
+            with mock.patch.dict(job, {"labels": ["self-hosted", "light"]}):
+                self.assertEqual(rows(self.render(), "ci_runner_job"),
+                                 ['ci_runner_job{runner="box-unity-pool-1",kind="light"} 1'])
+            # No labels and several caps: the kind is open, so no row rather than a guess.
+            self.assertEqual(rows(self.render(), "ci_runner_job"), [])
+
+    def test_a_repo_runner_on_a_borrowed_slot_is_kind_repo(self):
+        self.assertEqual(exporter.job_kind("box-light-1", ["self-hosted", "light"], ["self-hosted", "light"]), "light")
+        seat = {"host": "box", "caps": ["light"], "repo": "acme/web", "forge": "github", "borrows": "box-unity-pool-1"}
+        with mock.patch.dict(exporter.SLOTS, {"box-light-1": seat}):
+            self.assertEqual(exporter.job_kind("box-light-1", ["self-hosted", "light"], ["self-hosted", "light"]), "repo")
 
     def test_runner_rows_carry_their_labels_offline_too(self):
         # ci-runner-governor reads these to tell which waiting jobs a stopped host could take.
@@ -198,6 +259,7 @@ class ExporterTest(unittest.TestCase):
         # The ghost run is 10 minutes old in the fixture: jobless, but not stuck yet.
         ghost = next(r for r in waiting if 'job_name="(run has no jobs)"' in r)
         self.assertIn('stuck="false"', ghost)
+        self.assertIn('pool="jobless"', ghost)
         old = exporter.JOBLESS_STUCK_SECS
         try:
             exporter.JOBLESS_STUCK_SECS = 60
@@ -275,6 +337,35 @@ class ExporterTest(unittest.TestCase):
         self.assertEqual(d['github_job_duration_seconds{pool="light",workflow="CI",quantile="0.5",forge="github"}'], 0)
         self.assertEqual(d['github_job_duration_seconds{pool="light",workflow="CI",quantile="0.9",forge="github"}'], 240)
         self.assertEqual(d['github_job_duration_seconds{pool="github-hosted",workflow="CI",quantile="0.5",forge="github"}'], 60)
+
+    def test_a_light_job_on_a_unity_first_slot_is_light_history(self):
+        # An agnostic slot takes unity, light and heavy, unity first. Its runner row names no
+        # pool (github_runner_pool_slot has its caps), and a light job it finished is light
+        # history: duration, queue, jobs and workflows are keyed as ci_runner_job keys it.
+        flex = {"host": "box", "caps": ["unity", "light", "heavy"], "repo": None, "forge": "github", "borrows": None}
+        lint = FAKE["repos/acme/web/actions/runs/9/jobs?per_page=100"]["jobs"][0]
+        with mock.patch.dict(exporter.SLOTS, {"box-unity-pool-1": flex}), \
+                mock.patch.dict(lint, {"runner_name": "box-unity-pool-1"}):
+            out = self.render()
+        self.assertEqual([r for r in rows(out, "github_runner_state") if "pool=" in r], [])
+        d = {r.rsplit(" ", 1)[0]: int(r.rsplit(" ", 1)[1]) for r in rows(out, "github_job_duration_seconds")}
+        # light: lint 240s on the flex slot, e2e 0s on a runner since removed.
+        self.assertEqual(d['github_job_duration_seconds{pool="light",workflow="CI",quantile="0.9",forge="github"}'], 240)
+        for metric in ("github_job_duration_seconds", "github_job_queue_seconds", "github_jobs_finished",
+                       "github_pool_workflow"):
+            self.assertFalse([r for r in rows(out, metric) if 'pool="unity"' in r], metric)
+        self.assertIn('github_jobs_finished{pool="light",repo="web",workflow="CI",conclusion="failure",forge="github"} 1', out)
+
+    def test_a_finished_job_naming_no_kind_on_a_many_cap_slot_is_other(self):
+        # The kind is open (ci_runner_job leaves such a runner out): the job counts, as other, never
+        # as the slot's first cap.
+        flex = {"host": "box", "caps": ["unity", "light", "heavy"], "repo": None, "forge": "github", "borrows": None}
+        lint = FAKE["repos/acme/web/actions/runs/9/jobs?per_page=100"]["jobs"][0]
+        with mock.patch.dict(exporter.SLOTS, {"box-unity-pool-1": flex}), \
+                mock.patch.dict(lint, {"runner_name": "box-unity-pool-1", "labels": ["self-hosted"]}):
+            out = self.render()
+        self.assertIn('github_jobs_finished{pool="other",repo="web",workflow="CI",conclusion="failure",forge="github"} 1', out)
+        self.assertFalse([r for r in rows(out, "github_jobs_finished") if 'pool="unity"' in r])
 
     def test_quantile_nearest_rank(self):
         xs = list(range(1, 11))
@@ -363,6 +454,9 @@ class ExporterTest(unittest.TestCase):
         self.assertTrue(exporter.github_hosted({"labels": ["ubuntu-latest"]}))
         self.assertFalse(exporter.github_hosted({"runner_group_name": "Default", "labels": ["self-hosted"]}))
         self.assertFalse(exporter.github_hosted({"labels": ["self-hosted", "unity"]}))
+        self.assertFalse(exporter.github_hosted({"labels": ["unity", "unity-gate"]}))
+        self.assertFalse(exporter.github_hosted({"labels": ["light"]}))
+        self.assertTrue(exporter.github_hosted({"labels": ["windows-latest"]}))
         self.assertFalse(exporter.github_hosted({}))
 
     def test_history_stops_at_the_deadline_and_live_state_does_not(self):
@@ -444,9 +538,10 @@ class ExporterTest(unittest.TestCase):
 
     def test_pool_of_pinned_runners(self):
         self.assertEqual(exporter.pool_of(["self-hosted", "macOS", "arm64"]), "macos")
-        self.assertEqual(exporter.pool_of(["self-hosted", "Windows", "X64", "host-windows-media"]), "windows")
+        self.assertEqual(exporter.pool_of(["self-hosted", "Windows", "X64", "host-box"]), "windows")
         self.assertEqual(exporter.pool_of(["self-hosted", "Linux", "X64"]), "other")
         self.assertEqual(exporter.pool_of(["self-hosted", "linux", "unity-full"]), "unity")
+        self.assertEqual(exporter.pool_of(["self-hosted", "linux", "unity", "unity-wide"]), "unity-wide")
         self.assertEqual(exporter.pool_of(["self-hosted", "linux", "unity-withheld", "host-box"]), "unity")
         self.assertEqual(exporter.pool_of(["self-hosted", "linux", "unity-build", "host-aws-build-1"]), "unity-build")
         self.assertEqual(exporter.pool_of(["self-hosted", "linux", "unity-build-withheld", "host-aws-build-1"]), "unity-build")
@@ -454,6 +549,68 @@ class ExporterTest(unittest.TestCase):
     def test_host_label_beats_the_name_so_one_machine_is_one_host(self):
         self.assertEqual(exporter.host_of("m1-playground-mac", ["self-hosted", "macOS", "host-mac-mini"]), "mac-mini")
         self.assertEqual(exporter.host_of("m1-playground-mac", ["self-hosted", "macOS"]), "m1")
+        # A topology slot names its host, whatever its labels say.
+        with mock.patch.dict(exporter.SLOTS, {"m1-playground-mac": {"host": "mac-mini", "caps": ["macos"], "repo": None, "forge": "github"}}):
+            self.assertEqual(exporter.host_of("m1-playground-mac", ["self-hosted", "macOS"]), "mac-mini")
+
+    def takers(self, *runners_):
+        return exporter.runner_label_sets(runners_)
+
+    def test_a_wait_no_registered_runner_serves_is_unserved(self):
+        # ar-1872: a job asking for a label no runner this repo may use carries waits forever.
+        org = ("org", {"name": "box-unity-pool-1", "labels": [{"name": l} for l in ("self-hosted", "unity", "host-box")]})
+        web = ("acme/web", {"name": "box-light-1", "labels": [{"name": l} for l in ("self-hosted", "Linux", "light")]})
+        t = self.takers(org, web)
+        kind = exporter.wait_kind
+        self.assertEqual(kind("acme/game", {"labels": ["self-hosted", "unity"]}, t), "unity")
+        self.assertEqual(kind("acme/game", {"labels": ["self-hosted", "unity", "host-gone"]}, t), "unserved")
+        # A repo runner serves its own repo only, and an org runner only the org's repos.
+        self.assertEqual(kind("acme/game", {"labels": ["self-hosted", "light"]}, t), "unserved")
+        self.assertEqual(kind("other/repo", {"labels": ["self-hosted", "unity"]}, t), "unserved")
+        # GitHub matches labels without regard to case; runs-on: self-hosted takes the runner's cap.
+        self.assertEqual(kind("acme/web", {"labels": ["self-hosted", "linux"]}, t), "light")
+        self.assertEqual(kind("acme/web", {"labels": ["ubuntu-24.04"]}, t), "github-hosted")
+        self.assertEqual(kind("acme/web", {"labels": [], "_jobless": True}, t), "jobless")
+        # While a runner source failed nothing is called unserved.
+        self.assertEqual(kind("acme/game", {"labels": ["self-hosted", "unity", "host-gone"]}, None), "unity")
+
+    def test_a_wait_naming_no_kind_is_other_unless_its_runners_leave_one(self):
+        # runs-on: self-hosted on a slot that takes unity, light and heavy: the kind is open until it
+        # runs, as ci_runner_job and the history say, never the slot's first cap.
+        flex = {"host": "box", "caps": ["unity", "light", "heavy"], "repo": None, "forge": "github", "borrows": None}
+        org = ("org", {"name": "box-unity-pool-1", "labels": [{"name": l} for l in ("self-hosted", "unity", "host-box")]})
+        with mock.patch.dict(exporter.SLOTS, {"box-unity-pool-1": flex}):
+            t = self.takers(org)
+            self.assertEqual(exporter.wait_kind("acme/game", {"labels": ["self-hosted"]}, t), "other")
+            self.assertEqual(exporter.wait_kind("acme/game", {"labels": ["self-hosted", "unity"]}, t), "unity")
+
+    def test_a_withheld_runner_still_serves_what_it_gets_back(self):
+        held = ("org", {"name": "gone-unity-pool-1",
+                        "labels": [{"name": l} for l in ("self-hosted", "unity-withheld", "host-gone")]})
+        t = self.takers(held)
+        # gone is a full host: its unity slot gets unity and unity-full back on admit.
+        self.assertEqual(exporter.wait_kind("acme/game", {"labels": ["self-hosted", "unity", "unity-full"]}, t), "unity")
+        self.assertEqual(exporter.wait_kind("acme/game", {"labels": ["self-hosted", "unity-build"]}, t), "unserved")
+
+    def test_a_withheld_wide_lead_still_serves_a_wide_job(self):
+        # The governor admits a wide lead only for a wide job it sees waiting; the job asks for unity too.
+        held = ("org", {"name": "gone-unity-pool-6",
+                        "labels": [{"name": l} for l in ("self-hosted", "unity-build-withheld", "host-gone")]})
+        slot = {"host": "gone", "caps": ["unity-wide"], "repo": None, "forge": "github"}
+        with mock.patch.dict(exporter.SLOTS, {"gone-unity-pool-6": slot}), \
+                mock.patch.dict(exporter.TOPOLOGY, {"gone": {"site": "local", "full": True}}):
+            t = self.takers(held)
+            job = {"labels": ["self-hosted", "unity", "unity-wide"]}
+            self.assertEqual(exporter.wait_kind("acme/game", job, t), "unity-wide")
+
+    def test_a_repo_runner_waiting_for_its_lend_still_serves_its_repo(self):
+        # The governor admits a repo runner only while it lends it a Unity slot, so a wait is light, not unserved.
+        held = ("acme/web", {"name": "box-web-1", "labels": [{"name": l} for l in ("self-hosted", "light-withheld")]})
+        slot = {"box-web-1": {"host": "box", "caps": ["light"], "repo": "acme/web", "forge": "github"}}
+        with mock.patch.dict(exporter.SLOTS, slot):
+            t = self.takers(held)
+            self.assertEqual(exporter.wait_kind("acme/web", {"labels": ["self-hosted", "light"]}, t), "light")
+            self.assertEqual(exporter.wait_kind("acme/game", {"labels": ["self-hosted", "light"]}, t), "unserved")
 
     def test_withheld_runner_stays_in_the_pool(self):
         org = "orgs/acme/actions/runners?per_page=100&page=1"
@@ -465,9 +622,60 @@ class ExporterTest(unittest.TestCase):
         finally:
             FAKE[org] = saved
         self.assertEqual(rows(out, "github_runner_withheld"), ['github_runner_withheld{name="box-unity-pool-1",host="box"} 1'])
-        self.assertTrue(any('pool="unity"' in r and 'state="running"' in r for r in rows(out, "github_runner_state")))
+        self.assertTrue(any('pool="unity"' in r and 'state="running"' in r for r in rows(out, "github_runner_pool_slot")))
         self.assertFalse(any('state="missing"' in r and 'host="box"' in r and 'pool="unity"' in r
-                             for r in rows(out, "github_runner_state")))
+                             for r in rows(out, "github_runner_pool_slot")))
+
+    def test_same_runner_id_under_two_owners_counts_both(self):
+        # GitHub numbers runners per owner: a personal repo's runner 2 is not acme's runner 2.
+        repo = "repos/other/tools/actions/runners?per_page=100&page=1"
+        FAKE[repo] = {"total_count": 1, "runners": [runner(2, "box-tools-1", ["self-hosted", "light"])]}
+        saved = exporter.RUN_REPOS
+        exporter.RUN_REPOS = saved + ["other/tools"]
+        try:
+            out = self.render()
+        finally:
+            exporter.RUN_REPOS = saved
+            del FAKE[repo]
+        state = rows(out, "github_runner_state")
+        self.assertEqual(len([r for r in state if 'name="box-light-1"' in r and 'scope="acme/web"' in r]), 1, state)
+        self.assertEqual(len([r for r in state if 'name="box-tools-1"' in r and 'scope="other/tools"' in r]), 1, state)
+
+    def test_same_runner_id_in_two_repos_of_one_owner_counts_both(self):
+        # A repo runner's id counts within its repo: acme/game's runner 2 is not acme/web's.
+        repo = "repos/acme/game/actions/runners?per_page=100&page=1"
+        saved = FAKE[repo]
+        FAKE[repo] = {"total_count": 1, "runners": [runner(2, "box-game-1", ["self-hosted", "light"])]}
+        try:
+            out = self.render()
+        finally:
+            FAKE[repo] = saved
+        state = rows(out, "github_runner_state")
+        self.assertEqual(len([r for r in state if 'name="box-light-1"' in r and 'scope="acme/web"' in r]), 1, state)
+        self.assertEqual(len([r for r in state if 'name="box-game-1"' in r and 'scope="acme/game"' in r]), 1, state)
+
+    def test_a_hand_made_runner_does_not_hide_a_dead_repo_slot(self):
+        # box-light-2, a repo slot of acme/web, is offline. A runner registered by hand on
+        # the same host (no topology slot) is online: it is listed, but the pool stays one
+        # short, so CiHostRunnersOffline still sees the dead slot.
+        repo = "repos/acme/web/actions/runners?per_page=100&page=1"
+        saved = FAKE[repo]
+        # The same holds for a hand-made org runner, a second registration of the live
+        # box-light-1's name, and a GitHub runner named like a Forgejo slot.
+        org = "orgs/acme/actions/runners?per_page=100&page=1"
+        saved, saved_org = FAKE[repo], FAKE[org]
+        FAKE[repo] = {"total_count": 3, "runners": saved["runners"] + [runner(4, "box-light-2-hand", ["self-hosted", "light"])]}
+        FAKE[org] = {"total_count": 4, "runners": saved_org["runners"] + [
+            runner(5, "box-light-org-hand", ["self-hosted", "light"]), runner(6, "box-light-1", ["self-hosted", "light"]),
+            runner(7, "box-forgejo-1", ["self-hosted", "light"])]}
+        try:
+            out = self.render()
+        finally:
+            FAKE[repo], FAKE[org] = saved, saved_org
+        self.assertTrue(any('name="box-light-2-hand"' in r and 'state="idle"' in r for r in rows(out, "github_runner_state")))
+        self.assertIn('github_runner_pool_expected{host="box",pool="light"} 2', out)
+        self.assertIn('github_runner_pool_online{host="box",pool="light"} 1', out)
+        self.assertFalse([r for r in rows(out, "github_runner_pool_online") if 'pool="forgejo"' in r])
 
     def test_withheld_build_runner_stays_in_the_build_pool(self):
         org = "orgs/acme/actions/runners?per_page=100&page=1"
@@ -479,8 +687,8 @@ class ExporterTest(unittest.TestCase):
         finally:
             FAKE[org] = saved
         self.assertEqual(rows(out, "github_runner_withheld"), ['github_runner_withheld{name="bld-unity-pool-1",host="bld"} 1'])
-        self.assertTrue(any('pool="unity-build"' in r and 'host="bld"' in r for r in rows(out, "github_runner_state")))
-        self.assertFalse(any('pool="unity"' in r and 'host="bld"' in r for r in rows(out, "github_runner_state")))
+        self.assertTrue(any('pool="unity-build"' in r and 'host="bld"' in r for r in rows(out, "github_runner_pool_slot")))
+        self.assertFalse(any('pool="unity"' in r and 'host="bld"' in r for r in rows(out, "github_runner_pool_slot")))
 
     def test_a_paired_host_runs_two_pools_by_each_runners_labels(self):
         # aws-build-1: build slots in unity-build, test slots in unity, withheld or not.
@@ -831,20 +1039,8 @@ class RateLimitTest(unittest.TestCase):
         self.assertEqual(self.sent, [None, None, None])
 
 
-FJ_CONFIG = """log:
-  level: info
-runner:
-  capacity: 2
-  labels:
-    - "docker:docker://docker:27"
-    - "linux-amd64:host"
-"""
-
-
-def pod(name, node, phase="Running", ready=True):
-    return {"metadata": {"name": name}, "spec": {"nodeName": node} if node else {},
-            "status": {"phase": phase, "containerStatuses": [{"name": "dind", "ready": True},
-                                                             {"name": "runner", "ready": ready}]}}
+def fj_runner(i, name, status):
+    return {"id": i, "name": name, "status": status, "labels": ["linux-amd64", "docker"], "ephemeral": False}
 
 
 def task(i, status, created, started=None, updated=None, wf="build.yaml", name="build"):
@@ -868,9 +1064,12 @@ FJ = {
     # Forgejo answers null, not [], when nothing is waiting or running.
     "repos/kb/site/actions/runners/jobs": None,
     "repos/kb/site/actions/tasks?limit=50&page=1": {"total_count": 0, "workflow_runs": []},
+    # box-forgejo-1 was registered twice (the newer one is live), box-forgejo-3
+    # never was, and a runner outside the topology is not a slot.
+    "admin/actions/runners?limit=50&page=1": [
+        fj_runner(5, "box-forgejo-1", "active"), fj_runner(4, "box-forgejo-2", "idle"),
+        fj_runner(3, "box-forgejo-1", "offline"), fj_runner(2, "forgejo-runner-pod", "active")],
 }
-FJ_LOG = ("time=x level=info msg=\"task 90 repo is kb/ci https://data.forgejo.org https://forge\"\n"
-          "time=x level=info msg=\"task 101 repo is kb/ci https://data.forgejo.org https://forge\"\n")
 
 
 class FakeForge:
@@ -885,25 +1084,11 @@ class FakeForge:
             return self.jobs
         return FJ[path]
 
-    def kget(self, path, text=False):
-        self.calls.append(path)
-        if "k8s" in self.broken:
-            raise urllib.error.URLError("boom")
-        if path.endswith("/configmaps/forgejo-runner-config"):
-            return {"data": {"config.yaml": FJ_CONFIG}}
-        if "/pods?labelSelector=app.kubernetes.io%2Fname%3Dforgejo-runner" in path:
-            return {"items": [pod("runner-b", "razer-laptop", ready=False), pod("runner-a", "hp-victus"),
-                              pod("runner-c", None, phase="Pending"),
-                              pod("runner-old", "asus-laptop", phase="Succeeded", ready=False)]}
-        if path.startswith("/api/v1/namespaces/forgejo/pods/runner-a/log?container=runner&"):
-            return FJ_LOG
-        raise AssertionError(f"unexpected k8s read {path}")
-
 
 class ForgejoTest(unittest.TestCase):
     def setUp(self):
         for cache in (exporter.DONE_JOBS, exporter.HISTORY, exporter.CALLS, exporter.RATE,
-                      exporter.FJ_TASKS, exporter.FJ_REFRESHED, exporter.FJ_SEEN):
+                      exporter.FJ_TASKS, exporter.FJ_REFRESHED, exporter.FJ_SEEN, exporter.FJ_WAITED):
             cache.clear()
         self.repos = mock.patch.object(exporter, "FORGEJO_REPOS", ["kb/ci", "kb/site"])
         self.repos.start()
@@ -912,41 +1097,86 @@ class ForgejoTest(unittest.TestCase):
     def render(self, **kw):
         self.forge = FakeForge(**kw)
         exporter.get = Fake()
-        with mock.patch.object(exporter, "fget", self.forge.fget), mock.patch.object(exporter, "kget", self.forge.kget):
+        with mock.patch.object(exporter, "fget", self.forge.fget):
             return exporter.render()
 
     def state(self, out):
         return {re.search(r'name="([^"]+)"', r).group(1): r for r in rows(out, "github_runner_state")
                 if 'forge="forgejo"' in r}
 
-    def test_a_runner_is_capacity_rows_and_carries_its_task(self):
+    def test_a_topology_slot_is_one_row_in_its_newest_runners_state(self):
         st = self.state(self.render())
-        self.assertEqual(sorted(st), ["runner-a/1", "runner-a/2", "runner-b/1", "runner-b/2", "runner-c/1", "runner-c/2"])
-        run = st["runner-a/1"]
-        for want in ('host="hp-victus"', 'pool="forgejo"', 'site="local"', 'labels="docker,linux-amd64"',
-                     'state="running"', 'repo="ci"', 'workflow="build.yaml"', 'job_name="build"', 'branch="master"',
-                     'url="https://forge/kb/ci/actions/runs/101"', 'event="push"', 'title="commit 101"'):
-            self.assertIn(want, run)
-        # The -05:00 start is read as the same instant as T2, 300s ago.
-        self.assertGreaterEqual(int(run.rsplit(" ", 1)[1]), 299)
-        self.assertLess(int(run.rsplit(" ", 1)[1]), 400)
-        self.assertIn('state="idle"', st["runner-a/2"])
-        self.assertIn('state="offline"', st["runner-b/1"])
-        self.assertIn('state="missing"', st["runner-c/1"])
-        self.assertIn('host="unscheduled"', st["runner-c/1"])
+        self.assertEqual(sorted(st), ["box-forgejo-1", "box-forgejo-2", "box-forgejo-3"])
+        for want in ('host="box"', 'site="local"', 'scope="instance"',
+                     'labels="docker,linux-amd64"', 'state="running"', 'repo=""'):
+            self.assertIn(want, st["box-forgejo-1"])
+        self.assertNotIn("pool=", st["box-forgejo-1"])
+        self.assertIn('state="idle"', st["box-forgejo-2"])
+        self.assertIn('state="missing"', st["box-forgejo-3"])
+        self.assertIn('scope="topology"', st["box-forgejo-3"])
+        # Forgejo slots are not GitHub runners: no GitHub missing row, no GitHub pool count.
+        out = self.render()
+        self.assertFalse([r for r in rows(out, "github_runner_state") if 'forgejo' in r and 'forge="github"' in r])
+        self.assertNotIn('pool="forgejo"', "".join(rows(out, "github_runner_pool_expected")))
 
-    def test_only_up_runners_have_their_log_read(self):
-        self.render()
-        logs = [c for c in self.forge.calls if "/log?" in c]
-        self.assertEqual(len(logs), 1)
-        self.assertIn("/pods/runner-a/log?container=runner&sinceSeconds=86400", logs[0])
+    def test_a_running_seat_names_the_job_the_governor_says_it_runs(self):
+        # hc-571: the seat logs its task id, the governor serves it on /tasks, and the
+        # row takes the task's repo, workflow, job, branch and run url.
+        with mock.patch.object(exporter, "governor_tasks", return_value={"box-forgejo-1": 101}):
+            st = self.state(self.render())
+        for want in ('repo="ci"', 'workflow="build.yaml"', 'job_name="build"', 'branch="master"',
+                     'url="https://forge/kb/ci/actions/runs/101"'):
+            self.assertIn(want, st["box-forgejo-1"])
+        # An idle seat is never named, even if the governor still holds a task for it.
+        with mock.patch.object(exporter, "governor_tasks", return_value={"box-forgejo-2": 101}):
+            self.assertIn('repo=""', self.state(self.render())["box-forgejo-2"])
+        # A task in no watched repo still marks the seat busy on something.
+        with mock.patch.object(exporter, "governor_tasks", return_value={"box-forgejo-1": 999}):
+            row = self.state(self.render())["box-forgejo-1"]
+        self.assertIn('repo="(not watched)"', row)
+        self.assertIn('workflow=""', row)
+        # A task not yet in the task cache: this scrape's running job of it names repo and job.
+        with mock.patch.object(exporter, "governor_tasks", return_value={"box-forgejo-1": 999}):
+            row = self.state(self.render(jobs=[{"id": 7, "name": "deploy", "status": "running", "task_id": 999}]))[
+                "box-forgejo-1"]
+        for want in ('repo="ci"', 'job_name="deploy"', f'url="{exporter.FORGEJO_WEB}/kb/ci/actions"'):
+            self.assertIn(want, row)
+        # With a watched repo unread, the task may be its own: the repo stays blank, never "(not watched)".
+        exporter.FJ_TASKS.clear()
+        with mock.patch.object(exporter, "governor_tasks", return_value={"box-forgejo-1": 999}):
+            self.assertIn('repo=""', self.state(self.render(broken=("repos/kb/site",)))["box-forgejo-1"])
+
+    def test_no_governor_answer_leaves_a_running_seat_unnamed(self):
+        with mock.patch.object(exporter, "governor_tasks", return_value={}):
+            self.assertIn('repo=""', self.state(self.render())["box-forgejo-1"])
+        with mock.patch.object(exporter, "GOVERNOR_URL", ""):
+            self.assertEqual(exporter.governor_tasks(), {})
+        with mock.patch.object(exporter, "GOVERNOR_URL", "http://gov"), \
+                mock.patch.object(exporter.urllib.request, "urlopen", side_effect=urllib.error.URLError("down")):
+            self.assertEqual(exporter.governor_tasks(), {})
+        answer = mock.MagicMock()
+        answer.__enter__.return_value.read.return_value = b'{"box-forgejo-1": "101", "box-forgejo-2": "x"}'
+        with mock.patch.object(exporter, "GOVERNOR_URL", "http://gov"), \
+                mock.patch.object(exporter.urllib.request, "urlopen", return_value=answer):
+            # One bad id spoils the answer, never a crash.
+            self.assertEqual(exporter.governor_tasks(), {})
+        answer.__enter__.return_value.read.return_value = b'{"box-forgejo-1": "101"}'
+        with mock.patch.object(exporter, "GOVERNOR_URL", "http://gov"), \
+                mock.patch.object(exporter.urllib.request, "urlopen", return_value=answer) as op:
+            self.assertEqual(exporter.governor_tasks(), {"box-forgejo-1": 101})
+        self.assertEqual(op.call_args.args[0], "http://gov/tasks")
+
+    def test_a_busy_forgejo_seat_runs_a_forgejo_job(self):
+        self.assertEqual(rows(self.render(), "ci_runner_job"),
+                         ['ci_runner_job{runner="box-forgejo-1",kind="forgejo"} 1',
+                          'ci_runner_job{runner="box-unity-pool-1",kind="unity"} 1'])
 
     def test_forge_label_keeps_the_counts_apart(self):
         out = self.render()
         for want in ('github_runners_by_state{state="running",forge="forgejo"} 1',
                      'github_runners_by_state{state="idle",forge="forgejo"} 1',
-                     'github_runners_by_state{state="offline",forge="forgejo"} 2',
-                     'github_runners_by_state{state="missing",forge="forgejo"} 2',
+                     'github_runners_by_state{state="offline",forge="forgejo"} 0',
+                     'github_runners_by_state{state="missing",forge="forgejo"} 1',
                      'github_runners_by_state{state="running",forge="github"} 1'):
             self.assertIn(want, out)
         gh = [r for r in rows(out, "github_runner_state") if 'name="box-unity-pool-1"' in r]
@@ -969,6 +1199,44 @@ class ForgejoTest(unittest.TestCase):
         self.render(jobs=[])
         self.assertEqual(list(exporter.FJ_SEEN), [])
 
+    def test_the_same_job_of_two_queued_runs_is_two_series(self):
+        # Two pushes queue the same workflow: two waiting "test" jobs with the same labels.
+        # Without a per-job label Prometheus keeps one and drops its twin.
+        jobs = [{"id": 2, "name": "test", "status": "waiting", "task_id": 0, "runs_on": ["docker"]},
+                {"id": 7, "name": "test", "status": "waiting", "task_id": 0, "runs_on": ["docker"]}]
+        exporter.FJ_SEEN[2] = time.time() - 900
+        wait = [r for r in rows(self.render(jobs=jobs), "github_actions_job_waiting") if 'forge="forgejo"' in r]
+        series = {r.rsplit(" ", 1)[0] for r in wait}
+        self.assertEqual(len(series), 2, wait)
+        self.assertEqual(sorted(int(r.rsplit(" ", 1)[1]) // 100 for r in wait), [0, 9])
+
+    def test_a_seat_that_never_ran_has_no_labels_yet_so_no_wait_is_stuck(self):
+        # A one-job seat declares its labels only when it starts a job; Forgejo answers
+        # labels: null until then. The arm wait (no live runner takes it) stays unjudged.
+        undeclared = {**fj_runner(5, "box-forgejo-1", "offline"), "labels": None}
+        page = "admin/actions/runners?limit=50&page=1"
+        with mock.patch.dict(FJ, {page: [undeclared, *FJ[page][1:]]}):
+            out = self.render()
+        wait = [r for r in rows(out, "github_actions_job_waiting") if 'forge="forgejo"' in r]
+        self.assertTrue(wait)
+        self.assertTrue(all('stuck="false"' in r for r in wait), wait)
+
+    def queue(self, out):
+        return {re.search(r'quantile="([^"]+)"', r).group(1): int(r.rsplit(" ", 1)[1])
+                for r in rows(out, "github_job_queue_seconds") if 'forge="forgejo"' in r}
+
+    def test_queue_seconds_are_the_waits_the_scrapes_saw(self):
+        # Every task predates the exporter (EPOCH) and no job has left the waiting list: no row.
+        self.assertEqual(self.queue(self.render()), {})
+        exporter.FJ_SEEN[2] -= 120
+        exporter.FJ_SEEN[3] -= 600
+        with mock.patch.object(exporter, "EPOCH", 0):
+            # Both left the waiting list, after 120s and 600s. The window's three tasks are
+            # those two jobs plus one no scrape saw waiting, which counts 0: [0, 120, 600].
+            q = self.queue(self.render(jobs=[]))
+        self.assertEqual([w for _, w in exporter.FJ_WAITED], [120, 600])
+        self.assertEqual(q, {"0.5": 120, "0.9": 600})
+
     def test_a_failed_repo_keeps_the_first_seen_times(self):
         self.render()
         self.render(broken=("repos/kb/ci/",))
@@ -985,16 +1253,9 @@ class ForgejoTest(unittest.TestCase):
         self.assertEqual(d['github_job_duration_seconds{pool="forgejo",workflow="lint.yaml",quantile="0.9",forge="forgejo"}'], 300)
         self.assertEqual(len([r for r in rows(out, "github_pool_workflow") if 'pool="forgejo"' in r]), 2)
 
-    def test_last_job_is_on_every_slot_of_the_runner_that_ran_it(self):
-        out = self.render()
-        last = sorted(r for r in rows(out, "github_runner_last_job") if 'forge="forgejo"' in r)
-        self.assertEqual([re.search(r'name="([^"]+)"', r).group(1) for r in last], ["runner-a/1", "runner-a/2"])
-        self.assertIn('last_job="build"', last[0])
-        self.assertIn('last_conclusion="success"', last[0])
-
     def test_api_ok_per_source(self):
         out = self.render()
-        for want in ('github_runner_exporter_api_ok{source="forgejo:namespaces/forgejo",kind="runners",forge="forgejo"} 1',
+        for want in ('github_runner_exporter_api_ok{source="forgejo:admin/actions/runners",kind="runners",forge="forgejo"} 1',
                      'github_runner_exporter_api_ok{source="forgejo:repos/kb/ci",kind="runs",forge="forgejo"} 1',
                      'github_runner_exporter_api_ok{source="forgejo:repos/kb/site",kind="runs",forge="forgejo"} 1'):
             self.assertIn(want, out)
@@ -1002,10 +1263,10 @@ class ForgejoTest(unittest.TestCase):
         self.assertIn('github_runner_exporter_api_ok{source="forgejo:repos/kb/site",kind="runs",forge="forgejo"} 0', out)
 
     def test_unreadable_runners_are_absent_not_offline(self):
-        out = self.render(broken=("k8s",))
+        out = self.render(broken=("admin/",))
         self.assertEqual(self.state(out), {})
         self.assertFalse([r for r in rows(out, "github_runners_by_state") if 'forge="forgejo"' in r])
-        self.assertIn('github_runner_exporter_api_ok{source="forgejo:namespaces/forgejo",kind="runners",forge="forgejo"} 0', out)
+        self.assertIn('github_runner_exporter_api_ok{source="forgejo:admin/actions/runners",kind="runners",forge="forgejo"} 0', out)
         # Waiting jobs still show; with no label list to judge them by, none is called stuck.
         wait = [r for r in rows(out, "github_actions_job_waiting") if 'forge="forgejo"' in r]
         self.assertEqual(len(wait), 2)

@@ -161,7 +161,9 @@ spec:
             severity: warning
             category: capacity
             fleet: fix
+            system: ci
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/unity-ci-host.md#a-small-job-waiting-for-a-seat
             summary: "A {{ $labels.pool }} job has waited {{ $value | humanizeDuration }} for a seat: docs/runbooks/unity-ci-host.md#a-small-job-waiting-for-a-seat"
         # A light or heavy job on a whole Unity slot (<host>-unity-pool-N) of a host with light or
         # heavy seats: a second path for a small job is back, so it takes a slot a Unity job

@@ -251,8 +251,8 @@ tests:
       - eval_time: 10m
         alertname: CiSmallJobQueuedTooLong
         exp_alerts:
-          - exp_labels: {alertname: CiSmallJobQueuedTooLong, severity: warning, category: capacity, fleet: fix, pool: light}
-            exp_annotations: {summary: "A light job has waited 21m 0s for a seat: docs/runbooks/unity-ci-host.md#a-small-job-waiting-for-a-seat"}
+          - exp_labels: {alertname: CiSmallJobQueuedTooLong, severity: warning, category: capacity, fleet: fix, system: ci, pool: light}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/unity-ci-host.md#a-small-job-waiting-for-a-seat, summary: "A light job has waited 21m 0s for a seat: docs/runbooks/unity-ci-host.md#a-small-job-waiting-for-a-seat"}
 
   - name: a low GitHub API bucket warns after 10 minutes, per scope, across a pod restart
     interval: 1m

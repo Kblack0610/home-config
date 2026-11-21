@@ -373,6 +373,29 @@ spec:
               {{ $value }} hosts' node_boot_time moved in the last 5m. Several
               reboots at once point at power, not at one host. Check the UPS
               (docs/nut-ups.md) and which hosts came back: node_boot_time_seconds.
+        # A host whose upsmon is down is hard-cut at the next outage instead of shut
+        # down. nut-server sat start-limit-failed on the four Linux CI hosts after the
+        # 2026-11-20 power losses and nothing said so. Needs the nut units in the
+        # systemd collector's unit-include (helm-values.yaml).
+        - alert: NutUnitDown
+          expr: >-
+            node_systemd_unit_state{name=~"nut-.+",state="failed"} == 1
+            or node_systemd_unit_state{name="nut-monitor.service",state="active"} == 0
+          for: 10m
+          labels:
+            severity: warning
+            fleet: fix
+            system: deploy
+            category: node-health
+          annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/nut-ups.md#troubleshooting
+            summary: "NUT unit {{ $labels.name }} down on {{ $labels.instance }}"
+            description: >-
+              {{ $labels.name }} on {{ $labels.instance }} has been failed, or
+              (nut-monitor) not running, for 10m. Without upsmon the host is
+              hard-cut at the next power loss instead of shut down. Check
+              journalctl -u {{ $labels.name }} and re-apply the nut role
+              (ansible/roles/nut).
     - name: homelab-node-health.recording
       rules:
         - record: instance:node_cpu_package_temp:celsius

@@ -463,6 +463,10 @@
         gh_runner_withheld_label: "{{ ci_labels.build_withheld if unity_slot in unity_ci_slot_groups | default({}) else ci_labels.withheld }}"
         # The governor's lend mark: an apply never takes back a slot it lent to a seat.
         gh_runner_kept_labels: ["{{ ci_labels.lent }}"]
+        # A new slot registers withheld and runs only once the governor admits it, one per
+        # cycle on the host's readings: admitted at registration, deskslim-1's slots took 5
+        # PlayMode shards while its first play still ran, and failed them all (ar-4100).
+        gh_runner_register_withheld: true
         gh_runner_slice: "{{ unity_slot_slice }}"
         # UNITY_CACHE_SERVER only where the host runs an Accelerator (unity_ci_accelerator,
         # roles/ci-host), so the other hosts' env, and their slots, are unchanged.

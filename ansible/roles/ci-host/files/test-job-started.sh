@@ -18,6 +18,7 @@ ln -s hook "$t/job-completed.sh"
 grep -q '{{' "$t/hook" && { echo "FAIL the template has a variable this test does not fill"; exit 1; }
 
 home="$t/slot"
+echo boot-a > "$t/boot"; export CI_BOOT_ID_FILE="$t/boot"
 plat="$home/_work/platform/platform"
 game="$home/_work/unity-core-playground/unity-core-playground"
 mkdir -p "$plat/node_modules" "$game/ProjectSettings" "$game/Library"
@@ -49,6 +50,22 @@ mkdir -p "$t/bin" "$plat/stuck"; real_rm=$(command -v rm)
 printf '#!/bin/sh\ncase "$*" in *stuck*) exit 1;; esac\nexec %s "$@"\n' "$real_rm" > "$t/bin/rm"; chmod +x "$t/bin/rm"
 PATH="$t/bin:$PATH" end "$plat"; ok "a job-end cleanup that fails never fails the job" '[ $? -eq 0 ]'
 PATH="$t/bin:$PATH" run "$plat"; ok "the same failure at job start fails the job" '[ $? -ne 0 ]'
+
+# The boot stamp: a job the host went down under leaves its Unity Libraries torn.
+lib() { mkdir -p "$game/Library" "$game/Builds/release-tree/ProjectSettings" "$game/Builds/release-tree/Library"
+  touch "$game/Library/warm" "$game/Builds/release-tree/ProjectSettings/ProjectVersion.txt" "$game/Builds/release-tree/Library/warm"; }
+lib; end "$game"; run "$game" 1
+ok "a job start stamps the slot with the boot and the workspace" '[ "$(cat "$home/.ci-job-boot")" = "boot-a $game" ]'
+end "$game"; ok "job end removes the stamp" '[ ! -e "$home/.ci-job-boot" ]'
+run "$game" 1; echo boot-b > "$t/boot"; mkdir -p "$plat/node_modules"
+run "$plat"; ok "a job start after the host went down mid-job removes that workspace's Libraries, release trees too" '[ ! -e "$game/Library" ] && [ ! -e "$game/Builds/release-tree/Library" ] && [ -e "$game/ProjectSettings/ProjectVersion.txt" ]'
+ok "and stamps the new job" '[ "$(cat "$home/.ci-job-boot")" = "boot-b $plat" ]'
+lib; run "$game" 1; run "$game" 1; ok "a job whose end never ran, on the same boot, keeps the Library" '[ -e "$game/Library/warm" ]'
+end "$game"; echo boot-c > "$t/boot"; run "$game" 1
+ok "a reboot between jobs keeps the Library" '[ -e "$game/Library/warm" ]'
+mkdir -p "$t/elsewhere/Library"; echo "boot-a $t/elsewhere" > "$home/.ci-job-boot"; run "$game" 1
+ok "a stamp naming a path outside the slot's HOME is ignored" '[ -d "$t/elsewhere/Library" ] && [ -e "$game/Library/warm" ]'
+end "$game"; echo boot-a > "$t/boot"
 
 # A light job on a Unity slot: ci-fresh-workspace moves the checkout's untracked state (Library and
 # the rest) aside, the job's clean checkout runs on the tracked tree, and the job-end hook puts the

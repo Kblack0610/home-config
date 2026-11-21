@@ -1720,7 +1720,9 @@ def reclaimed(cfg, runners, open_lends, lends, github_jobs, oldest):
     Each GitHub job that has waited longer than any job of a lend's kind takes one lent slot back, busy or
     not: a stream of short light jobs keeps a lent slot busy for good, so waiting for it to go idle left 13
     Unity slots lent while playground Tests waited 30 minutes (hc-766). Idle lends go first, and a returning
-    lend is that job's slot already, so one job does not pull back every lend while the first drains."""
+    lend is that job's slot already, so one job does not pull back every lend while the first drains.
+    A lend whose kind has nothing waiting is not reclaimed: its jobs are the ones running, and the want
+    rule returns it once idle. Read as age -1, any GitHub job took it back minutes after its grant."""
     rivals, claimed = sorted(github_jobs, key=lambda j: -j[0]), set()
 
     def claim(slot, older_than):
@@ -1735,7 +1737,9 @@ def reclaimed(cfg, runners, open_lends, lends, github_jobs, oldest):
         claim(slot, -1)
     out = {}
     for slot, (kind, _) in sorted(open_lends.items(), key=lambda p: (p[1][1], p[0])):
-        age = claim(slot, oldest.get(kind, -1))
+        if kind not in oldest:
+            continue
+        age = claim(slot, oldest[kind])
         if age is not None:
             out[slot] = f"a GitHub job it takes has waited {int(age)}s, longer than any {kind} job"
     return out

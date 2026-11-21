@@ -15,6 +15,7 @@
     owner: root
     group: root
     mode: "0644"
+  register: _unity_ci_accelerator_unit
   notify: Restart unity-accelerator
 
 - name: Run the Unity Accelerator
@@ -23,3 +24,6 @@
     enabled: true
     state: started
     daemon_reload: true
+  # In --check a new unit is not really written and systemd fails on it, which failed the
+  # convergence-check run and hid the host's later drift (tuf-b550, 2026-11-21, ar-4291).
+  when: not (ansible_check_mode and _unity_ci_accelerator_unit is changed)

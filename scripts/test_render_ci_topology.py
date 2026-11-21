@@ -103,34 +103,35 @@ class CapTests(unittest.TestCase):
         topo, fails = topology.render(self.hosts, self.groups)
         return {s["name"]: s["caps"] for h in topo.get("hosts", {}).values() for s in h["slots"]}, fails
 
+    def no_slice(self, host):
+        """host without its standing slice, so its small kinds run on its whole slots."""
+        for k in ("ci_small_slice", "ci_repo_runners"):
+            self.hosts[host].pop(k, None)
+
     def test_a_test_slot_takes_its_hosts_small_kinds_only_where_no_seat_serves_them(self):
         slots, fails = self.slots()
         self.assertEqual(fails, [])
         self.assertEqual(slots["deskslim-2-unity-pool-1"], ["unity"])
-        self.assertEqual(slots["deskslim-2-unity-pool-1-light-1"], ["light"])
-        self.assertEqual(slots["deskslim-2-unity-pool-1-heavy-1"], ["heavy"])
-        # The negative control: a host without ci_seat_kinds keeps its small kinds on its whole slots.
-        self.hosts["deskslim-2"].pop("ci_seat_kinds")
+        self.assertEqual(slots["deskslim-2-small-light-1"], ["light"])
+        self.assertEqual(slots["deskslim-2-small-heavy-1"], ["heavy"])
+        self.assertFalse([n for n in slots if "-unity-pool-" in n and n.endswith(("-light-1", "-heavy-1", "-forgejo"))])
+        # The negative control: a host without a slice keeps its small kinds on its whole slots.
+        self.no_slice("deskslim-2")
         slots, fails = self.slots()
         self.assertEqual(fails, [])
         self.assertEqual(slots["deskslim-2-unity-pool-1"], ["unity", "light", "heavy"])
-        self.assertNotIn("deskslim-2-unity-pool-1-light-1", slots)
-        # Seats of one kind drop that kind alone.
-        self.hosts["deskslim-2"]["ci_seat_kinds"] = ["light"]
-        slots, fails = self.slots()
-        self.assertEqual(fails, [])
-        self.assertEqual(slots["deskslim-2-unity-pool-1"], ["unity", "heavy"])
+        self.assertNotIn("deskslim-2-small-light-1", slots)
 
     def test_no_slot_has_cores_for_small_jobs_alone(self):
         topo, fails = topology.render(self.hosts, self.groups)
         self.assertEqual(fails, [])
         small = [s["name"] for h in topo["hosts"].values() for s in h["slots"]
-                 if set(s["caps"]) <= {"light", "heavy", "forgejo"} and not s.get("borrows") and not s.get("slice")]
+                 if set(s["caps"]) <= {"light", "heavy", "forgejo"} and not s.get("slice")]
         self.assertEqual(small, [])
 
     def test_unity_slot_takes_heavy_only_on_a_heavy_host(self):
         for host in ("deskslim-2", "ms-a2"):
-            self.hosts[host].pop("ci_seat_kinds")
+            self.no_slice(host)
         self.hosts["deskslim-2"]["ci_caps"] = ["light", "unity", "forgejo"]
         slots, fails = self.slots()
         self.assertEqual(fails, [])
@@ -170,113 +171,38 @@ class CapTests(unittest.TestCase):
         _, fails = self.slots()
         self.assertTrue(any("ci_caps names gpu" in f for f in fails))
 
-    def test_a_forgejo_seat_borrows_each_ungrouped_test_slot_and_has_no_cores_of_its_own(self):
-        topo, fails = topology.render(self.hosts, self.groups)
-        self.assertEqual(fails, [])
-        fj = {s["name"]: s for h in topo["hosts"].values() for s in h["slots"] if s.get("forge") == "forgejo" and not s.get("slice")}
-        # ms-a2's slots 3-4 are build slot 5's group, so only 1-2 lend.
-        self.assertEqual(sorted({s["borrows"] for s in fj.values()}), sorted(
-            [f"ms-a2-unity-pool-{n}" for n in (1, 2)] + [f"deskslim-2-unity-pool-{n}" for n in (1, 2, 3)]
-            + [f"deskslim-1-unity-pool-{n}" for n in (1, 2, 3)]
-            + [f"tuf-b550-unity-pool-{n}" for n in (1, 2, 3, 4)]))
-        self.assertTrue(all(s["caps"] == ["forgejo"] and n.startswith(s["borrows"] + "-forgejo") for n, s in fj.items()))
-
-    def test_a_slot_registers_one_seat_per_min_job_cores_and_names_its_size(self):
-        topo, fails = topology.render(self.hosts, self.groups)
-        self.assertEqual(fails, [])
-        slots = {s["name"]: s for s in topo["hosts"]["tuf-b550"]["slots"]}
-        seats = [s for s in slots.values() if s.get("borrows") == "tuf-b550-unity-pool-1" and s.get("forge") == "forgejo"]
-        cores = len(topology.cpu_set(self.hosts["tuf-b550"]["ci_unity_slot_cpus"][0]))
-        self.assertEqual([s["name"] for s in seats], ["tuf-b550-unity-pool-1-forgejo"]
-                         + [f"tuf-b550-unity-pool-1-forgejo-{i}" for i in range(2, cores // topology.MIN_JOB_CORES + 1)])
-        self.assertTrue(all(s["cpus"] == cores and s["memory_gb"] == 14 for s in seats))
-        self.assertNotIn("ci_units", topology.KEYS)
-
-    def test_ci_seat_kinds_put_org_seats_of_that_kind_on_each_lendable_slot_and_only_there(self):
-        topo, fails = topology.render(self.hosts, self.groups)
-        self.assertEqual(fails, [])
-        light = {h: [s for s in e["slots"] if s["caps"] == ["light"] and s.get("borrows") and not s.get("repo")]
-                 for h, e in topo["hosts"].items()}
-        self.assertEqual({h for h, s in light.items() if s}, {"tuf-b550", "deskslim-1", "deskslim-2", "ms-a2"})
-        # ms-a2's slots 3 and 4 lend their cores to build slot 5, so only slots 1 and 2 get seats.
-        self.assertEqual({s["borrows"] for s in light["ms-a2"]}, {"ms-a2-unity-pool-1", "ms-a2-unity-pool-2"})
-        seats = light["tuf-b550"]
-        self.assertEqual(len(seats), 14)
-        self.assertEqual(seats[0], {"name": "tuf-b550-unity-pool-1-light-1", "caps": ["light"],
-                                    "borrows": "tuf-b550-unity-pool-1", "cpus": 6, "memory_gb": 14})
-        self.assertTrue(all("forge" not in s for s in seats))
-
-    def test_ci_seat_kinds_must_be_small_kinds_the_host_takes_and_not_on_a_cloud_host(self):
-        for host, kinds, want in (("cachyos-x8664-main", ["heavy"], "ci_seat_kinds names heavy"),
-                                  ("tuf-b550", ["unity"], "ci_seat_kinds names unity"),
-                                  ("cloud-1", ["light"], "ci_seat_kinds on a cloud host")):
-            with self.subTest(host=host, kinds=kinds):
-                self.setUp()
-                self.hosts[host]["ci_seat_kinds"] = kinds
-                _, fails = topology.render(self.hosts, self.groups)
-                self.assertTrue(any(want in f for f in fails), fails)
-        self.setUp()
-        self.wide_ms_a2(seats=True)
-        _, fails = topology.render(self.hosts, self.groups)
-        self.assertIn("ms-a2: ci_seat_kinds with no lendable slot (each is in a slot group), "
-                      "so ['light', 'heavy'] would have no runner", fails)
-
-    def test_every_repo_runner_borrows_a_unity_slot(self):
-        topo, fails = topology.render(self.hosts, self.groups)
-        self.assertEqual(fails, [])
-        repo = [s for h in topo["hosts"].values() for s in h["slots"]
-                if s.get("repo", "").startswith("Kblack0610/") and not s.get("slice")]
-        self.assertTrue(repo)
-        self.assertTrue(all(s.get("borrows") for s in repo))
-
-    def test_a_repo_runner_registers_one_sized_seat_per_min_job_cores_of_its_slot(self):
-        # One seat per slot and no slot size left the repo kind unweighed, so a lend ran one job (hc-repo-seats).
-        self.hosts["tuf-b550"]["ci_repo_runners"] = [{"repo": "Kblack0610/x", "name": "x", "borrows": 1}]
-        topo, fails = topology.render(self.hosts, self.groups)
-        self.assertEqual(fails, [])
-        cores = len(topology.cpu_set(self.hosts["tuf-b550"]["ci_unity_slot_cpus"][0]))
-        seats = [s for s in topo["hosts"]["tuf-b550"]["slots"] if s.get("repo") == "Kblack0610/x" and not s.get("slice")]
-        self.assertEqual([s["name"] for s in seats],
-                         [f"tuf-b550-x-{i}" for i in range(1, cores // topology.MIN_JOB_CORES + 1)])
-        self.assertTrue(all(s["caps"] == ["light"] and s["borrows"] == "tuf-b550-unity-pool-1"
-                            and s["cpus"] == cores and s["memory_gb"] == 14 for s in seats))
-
-    def test_a_repo_runner_on_a_grouped_or_missing_slot_fails(self):
-        for host, n in (("deskslim-2", 4), ("ms-a2", 3)):
-            with self.subTest(host=host, n=n):
-                self.setUp()
-                self.hosts[host]["ci_repo_runners"] = [{"repo": "Kblack0610/x", "name": "x", "borrows": n}]
-                slots, fails = self.slots()
-                self.assertTrue(any(f"{host}-x borrows {host}-unity-pool-{n}, not one of" in f for f in fails), fails)
-                self.assertFalse([s for s in slots if s.startswith(f"{host}-x-")])
-
-    def test_a_repo_runner_without_borrows_fails(self):
-        self.hosts["deskslim-2"]["ci_repo_runners"] = [{"repo": "Kblack0610/x", "name": "x"}]
-        _, fails = self.slots()
-        self.assertIn("deskslim-2: ci_repo_runners x has no borrows (the Unity slot it runs on)", fails)
-
     def test_a_repo_runner_in_the_old_slot_form_fails_readably(self):
-        self.hosts["deskslim-2"]["ci_repo_runners"] = [{"repo": "Kblack0610/x", "slot": "x", "borrows": 1}]
+        self.hosts["deskslim-2"]["ci_repo_runners"] = [{"repo": "Kblack0610/x", "slot": "x"}]
         slots, fails = self.slots()
         self.assertTrue(any("ci_repo_runners" in f and "has no name" in f for f in fails), fails)
         self.assertFalse([s for s in slots if "-x-" in s])
 
-    def test_seats_caps_a_repo_runner_below_its_slot_count(self):
+    def test_seats_caps_a_repo_runners_standing_seats(self):
         # The repo weight is one figure for every personal repo, so a heavy repo caps its own seats.
-        self.hosts["tuf-b550"]["ci_repo_runners"] = [{"repo": "Kblack0610/x", "name": "x", "borrows": 1, "seats": 1},
-                                                     {"repo": "Kblack0610/y", "name": "y", "borrows": 2, "seats": 99}]
+        self.hosts["tuf-b550"]["ci_repo_runners"] = [{"repo": "Kblack0610/x", "name": "x", "seats": 1},
+                                                     {"repo": "Kblack0610/y", "name": "y", "seats": 99}]
         topo, fails = topology.render(self.hosts, self.groups)
         self.assertEqual(fails, [])
         names = [s["name"] for s in topo["hosts"]["tuf-b550"]["slots"] if s.get("repo")]
-        self.assertIn("tuf-b550-x-1", names)
-        self.assertNotIn("tuf-b550-x-2", names)
-        cores = len(topology.cpu_set(self.hosts["tuf-b550"]["ci_unity_slot_cpus"][1]))
-        self.assertEqual(len([n for n in names if n.startswith("tuf-b550-y-")]), cores // topology.MIN_JOB_CORES)
+        self.assertEqual([n for n in names if n.startswith("tuf-b550-small-x-")], ["tuf-b550-small-x-1"])
+        self.assertGreater(len([n for n in names if n.startswith("tuf-b550-small-y-")]), 1)
 
     def test_seats_below_one_fails(self):
-        self.hosts["tuf-b550"]["ci_repo_runners"] = [{"repo": "Kblack0610/x", "name": "x", "borrows": 1, "seats": 0}]
+        self.hosts["tuf-b550"]["ci_repo_runners"] = [{"repo": "Kblack0610/x", "name": "x", "seats": 0}]
         _, fails = self.slots()
         self.assertTrue(any("tuf-b550-x seats 0 is not a whole number of at least 1" in f for f in fails), fails)
+
+    def test_a_repo_runner_needs_a_slice(self):
+        self.hosts["tuf-b550"].pop("ci_small_slice")
+        _, fails = self.slots()
+        self.assertIn("tuf-b550: ci_repo_runners needs a ci_small_slice, the only place a repo runner runs", fails)
+
+    def test_no_seat_borrows_a_slot_or_carries_a_lend_key(self):
+        topo, fails = topology.render(self.hosts, self.groups)
+        self.assertEqual(fails, [])
+        self.assertNotIn("ci_seat_kinds", topology.KEYS)
+        self.assertFalse([s["name"] for h in topo["hosts"].values() for s in h["slots"] if "borrows" in s])
+        self.assertFalse({"seat_withheld", "lent"} & set(topo["labels"]) if "labels" in topo else set())
 
     def test_a_host_without_forgejo_in_ci_caps_gets_no_seat(self):
         self.hosts["ms-a2"]["ci_caps"] = ["light", "heavy", "unity", "unity-build"]
@@ -336,12 +262,10 @@ class CapTests(unittest.TestCase):
         self.hosts["ms-a2"]["unity_ci_slot_labels"] = {1: ["slim-tour"]}
         self.assertTrue(any("0 of the pool's 1 build slots" in f for f in topology.fit_failures(self.hosts, self.groups)))
 
-    def wide_ms_a2(self, seats=False):
+    def wide_ms_a2(self):
         """ms-a2 with a wide slot 6 over test slots 1 and 2's cores (cores 2-7) and their memory, beside build slot 5.
-        Every slot is then in a group, so none is lendable and its ci_seat_kinds go unless seats is set."""
+        Every slot is then in a group."""
         v = self.hosts["ms-a2"]
-        if not seats:
-            v.pop("ci_seat_kinds", None)
         wide_gb = sum(int(m.rstrip("G")) for m in v["ci_unity_slot_memory_max"][:2])
         v.update(unity_ci_slots=6, unity_ci_slot_groups={5: [3, 4], 6: [1, 2]}, unity_ci_wide_slots=[6],
                  ci_unity_slot_cpus=[*v["ci_unity_slot_cpus"], "2-7,18-23"],
@@ -442,7 +366,7 @@ class PowerAndLabelTests(unittest.TestCase):
 
     def test_the_label_vocabulary_is_whole_and_its_cap_roles_match_caps(self):
         self.assertEqual(topology.label_failures(self.labels), [])
-        bad = {**self.labels, "pool": "gpu", "lent": self.labels["withheld"]}
+        bad = {**self.labels, "pool": "gpu", "build_withheld": self.labels["withheld"]}
         del bad["full"]
         fails = topology.label_failures(bad)
         self.assertIn("ci_labels has no full", fails)

@@ -12,18 +12,16 @@ G = m.GIB
 TOPOLOGY = {"box": {"slots": [
     {"name": "box-unity-pool-1", "caps": ["unity", "light", "heavy"]},
     {"name": "box-unity-pool-2", "caps": ["unity", "light", "heavy"]},
-    {"name": "box-unity-pool-1-forgejo", "caps": ["forgejo"], "forge": "forgejo", "borrows": "box-unity-pool-1"},
-    {"name": "box-web-1", "caps": ["light"], "repo": "acme/web", "borrows": "box-unity-pool-2"}]},
+    {"name": "box-small-forgejo-1", "caps": ["forgejo"], "forge": "forgejo", "slice": "small"}]},
     "mac": {"slots": [{"name": "mac-mac", "caps": ["macos"], "repo": "acme/app"}]}}
 HOSTS = {"box": {"unity_ci_slots": 2, "ci_unity_slot_cpus": ["0-5", "6-11"], "ci_unity_slot_memory_max": "16G"}}
 
 
 class SlotSizes(unittest.TestCase):
-    def test_a_seat_takes_the_size_of_the_slot_it_borrows(self):
+    def test_a_unity_slot_takes_its_inventory_size_and_a_seat_none(self):
         s = m.slot_sizes(TOPOLOGY, HOSTS)
         self.assertEqual(s["box-unity-pool-1"], (6, 16 * G))
-        self.assertEqual(s["box-unity-pool-1-forgejo"], (6, 16 * G))
-        self.assertEqual(s["box-web-1"], (6, 16 * G))
+        self.assertNotIn("box-small-forgejo-1", s)
         self.assertNotIn("mac-mac", s)
 
 
@@ -33,16 +31,13 @@ class Weights(unittest.TestCase):
 
     def test_weight_is_the_larger_p90_share_capped_at_one(self):
         cores = {("box-unity-pool-1", "light"): {0: 0.3, 60: 0.6},
-                 ("box-unity-pool-1-forgejo", "forgejo"): {0: 1.2, 60: 1.2},
                  ("box-unity-pool-2", "unity"): {0: 9.0}}
         mem = {("box-unity-pool-1", "light"): {0: 1 * G, 60: 1 * G},
-               ("box-unity-pool-1-forgejo", "forgejo"): {0: 12 * G, 60: 12 * G},
                ("box-unity-pool-2", "unity"): {0: 8 * G}}
         w = m.weights(cores, mem, self.sizes)
         self.assertEqual(w["light"]["samples"], 2)
         self.assertAlmostEqual(w["light"]["cores_p90"], 0.57)
         self.assertAlmostEqual(w["light"]["weight"], 0.57 / 6)  # cores share beats 1/16 memory
-        self.assertAlmostEqual(w["forgejo"]["weight"], 12 / 16)  # memory share beats 1.2/6 cores
         self.assertEqual(w["unity"]["weight"], 1.0)  # 9 busy CPUs on a 6-CPU slot is a whole slot
 
     def test_a_runner_with_no_slot_has_figures_and_no_share(self):

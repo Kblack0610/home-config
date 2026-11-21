@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Each CI job kind's measured share of a slot: cores and memory p50 and p90, and its weight.
 
-Plan it-hough-ci-spaced-lucky-hennessy, phase 1: the numbers the governor will pack lends by.
+The numbers that size the standing small-job seats (ci_small_job_size).
 A sample is one busy runner at one step (cc:job_kind_cores and cc:job_kind_mem, which carry
 the kind github-runner-exporter's ci_runner_job gives it). Its share is cores over the CPUs of
-the slot it runs on (a seat's is the slot it borrows) and memory over that slot's MemoryMax,
+the slot it runs on and memory over that slot's MemoryMax,
 both from ansible/inventory.yml (ci_unity_slot_cpus, ci_unity_slot_memory_max). A kind's weight
 is the larger of its p90 cores share and p90 memory share, at most 1. A kind with no samples
 prints "-", never 0. Mac runners have no slot, so they get figures and no share.
@@ -46,8 +46,8 @@ GIB = 2 ** 30
 
 
 def slot_sizes(topology, hosts):
-    """{runner name: (CPUs, memory cap in bytes)} for every Unity slot the inventory sizes, and
-    every seat that borrows one. Either figure is None where the inventory gives none."""
+    """{runner name: (CPUs, memory cap in bytes)} for every Unity slot the inventory sizes. Either
+    figure is None where the inventory gives none."""
     sizes = {}
     for host in topology:
         v = hosts.get(host, {})
@@ -57,10 +57,6 @@ def slot_sizes(topology, hosts):
             c = len(cpus[n - 1]) if n <= len(cpus) else None
             m = mem[n - 1] * GIB if n <= len(mem) and mem[n - 1] else None
             sizes[topo.unity_slot(host, n)] = (c, m)
-    for e in topology.values():
-        for s in e["slots"]:
-            if s.get("borrows") in sizes:
-                sizes[s["name"]] = sizes[s["borrows"]]
     return sizes
 
 

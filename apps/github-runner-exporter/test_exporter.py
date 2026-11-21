@@ -211,7 +211,7 @@ class ExporterTest(unittest.TestCase):
         self.assertEqual(rows(self.render(), "ci_runner_job"), ['ci_runner_job{runner="box-unity-pool-1",kind="unity"} 1'])
 
     def test_ci_runner_job_kind_comes_from_the_jobs_labels_on_a_many_cap_slot(self):
-        flex = {"host": "box", "caps": ["unity", "light", "heavy"], "repo": None, "forge": "github", "borrows": None}
+        flex = {"host": "box", "caps": ["unity", "light", "heavy"], "repo": None, "forge": "github"}
         job = FAKE["repos/acme/game/actions/runs/10/jobs?per_page=100"]["jobs"][0]
         with mock.patch.dict(exporter.SLOTS, {"box-unity-pool-1": flex}):
             with mock.patch.dict(job, {"labels": ["self-hosted", "light"]}):
@@ -220,13 +220,9 @@ class ExporterTest(unittest.TestCase):
             # No labels and several caps: the kind is open, so no row rather than a guess.
             self.assertEqual(rows(self.render(), "ci_runner_job"), [])
 
-    def test_a_repo_runner_on_a_borrowed_slot_is_kind_repo(self):
+    def test_a_repo_runner_in_the_standing_slice_is_kind_repo(self):
         self.assertEqual(exporter.job_kind("box-light-1", ["self-hosted", "light"], ["self-hosted", "light"]), "light")
-        seat = {"host": "box", "caps": ["light"], "repo": "acme/web", "forge": "github", "borrows": "box-unity-pool-1"}
-        with mock.patch.dict(exporter.SLOTS, {"box-light-1": seat}):
-            self.assertEqual(exporter.job_kind("box-light-1", ["self-hosted", "light"], ["self-hosted", "light"]), "repo")
-        # A standing seat of the repo, in the host's small-job slice, is repo too.
-        standing = {**seat, "borrows": None, "slice": "small"}
+        standing = {"host": "box", "caps": ["light"], "repo": "acme/web", "forge": "github", "slice": "small"}
         with mock.patch.dict(exporter.SLOTS, {"box-light-1": standing}):
             self.assertEqual(exporter.job_kind("box-light-1", ["self-hosted", "light"], ["self-hosted", "light"]), "repo")
 
@@ -346,7 +342,7 @@ class ExporterTest(unittest.TestCase):
         # An agnostic slot takes unity, light and heavy, unity first. Its runner row names no
         # pool (github_runner_pool_slot has its caps), and a light job it finished is light
         # history: duration, queue, jobs and workflows are keyed as ci_runner_job keys it.
-        flex = {"host": "box", "caps": ["unity", "light", "heavy"], "repo": None, "forge": "github", "borrows": None}
+        flex = {"host": "box", "caps": ["unity", "light", "heavy"], "repo": None, "forge": "github"}
         lint = FAKE["repos/acme/web/actions/runs/9/jobs?per_page=100"]["jobs"][0]
         with mock.patch.dict(exporter.SLOTS, {"box-unity-pool-1": flex}), \
                 mock.patch.dict(lint, {"runner_name": "box-unity-pool-1"}):
@@ -363,7 +359,7 @@ class ExporterTest(unittest.TestCase):
     def test_a_finished_job_naming_no_kind_on_a_many_cap_slot_is_other(self):
         # The kind is open (ci_runner_job leaves such a runner out): the job counts, as other, never
         # as the slot's first cap.
-        flex = {"host": "box", "caps": ["unity", "light", "heavy"], "repo": None, "forge": "github", "borrows": None}
+        flex = {"host": "box", "caps": ["unity", "light", "heavy"], "repo": None, "forge": "github"}
         lint = FAKE["repos/acme/web/actions/runs/9/jobs?per_page=100"]["jobs"][0]
         with mock.patch.dict(exporter.SLOTS, {"box-unity-pool-1": flex}), \
                 mock.patch.dict(lint, {"runner_name": "box-unity-pool-1", "labels": ["self-hosted"]}):
@@ -581,7 +577,7 @@ class ExporterTest(unittest.TestCase):
     def test_a_wait_naming_no_kind_is_other_unless_its_runners_leave_one(self):
         # runs-on: self-hosted on a slot that takes unity, light and heavy: the kind is open until it
         # runs, as ci_runner_job and the history say, never the slot's first cap.
-        flex = {"host": "box", "caps": ["unity", "light", "heavy"], "repo": None, "forge": "github", "borrows": None}
+        flex = {"host": "box", "caps": ["unity", "light", "heavy"], "repo": None, "forge": "github"}
         org = ("org", {"name": "box-unity-pool-1", "labels": [{"name": l} for l in ("self-hosted", "unity", "host-box")]})
         with mock.patch.dict(exporter.SLOTS, {"box-unity-pool-1": flex}):
             t = self.takers(org)
@@ -606,15 +602,6 @@ class ExporterTest(unittest.TestCase):
             t = self.takers(held)
             job = {"labels": ["self-hosted", "unity", "unity-wide"]}
             self.assertEqual(exporter.wait_kind("acme/game", job, t), "unity-wide")
-
-    def test_a_repo_runner_waiting_for_its_lend_still_serves_its_repo(self):
-        # The governor admits a repo runner only while it lends it a Unity slot, so a wait is light, not unserved.
-        held = ("acme/web", {"name": "box-web-1", "labels": [{"name": l} for l in ("self-hosted", "light-withheld")]})
-        slot = {"box-web-1": {"host": "box", "caps": ["light"], "repo": "acme/web", "forge": "github"}}
-        with mock.patch.dict(exporter.SLOTS, slot):
-            t = self.takers(held)
-            self.assertEqual(exporter.wait_kind("acme/web", {"labels": ["self-hosted", "light"]}, t), "light")
-            self.assertEqual(exporter.wait_kind("acme/game", {"labels": ["self-hosted", "light"]}, t), "unserved")
 
     def test_withheld_runner_stays_in_the_pool(self):
         org = "orgs/acme/actions/runners?per_page=100&page=1"

@@ -15,11 +15,11 @@ Environment=FORGEJO_SEAT_LEASE_URL={{ forgejo_runner_lease_url }}
 Environment=FORGEJO_SEAT_NAME={{ forgejo_runner_name }}
 Environment=FORGEJO_SEAT_BIN={{ forgejo_runner_bin }}
 Environment=FORGEJO_SEAT_CONFIG={{ forgejo_runner_home }}/config.yaml
-# Runs one job at a time, and only while ci-runner-governor lends it the slot (forgejo-seat.py).
+# Runs one job at a time, and only while ci-runner-governor's lease says forgejo (forgejo-seat.py).
 ExecStart=/usr/bin/python3 {{ forgejo_seat_bin }}
 Restart=always
 RestartSec=5
-# The borrowed Unity slot's CPU set and memory cap (roles/ci-host-budget). Job containers
+# The small-job slice's CPU set and memory cap (roles/ci-host-budget). Job containers
 # join it through the config's --cgroup-parent.
 Slice={{ forgejo_runner_slice }}
 # Let a running job finish its step on a restart; the runner reports it as cancelled.

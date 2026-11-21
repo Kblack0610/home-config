@@ -45,9 +45,16 @@ with urllib.request.urlopen(os.environ["STUB_URL"] + "/stub-run", timeout=60) as
 class Leases(governor.Leases):
     """The governor's leases, telling the test each time the seat asks."""
 
-    def __init__(self, seats, asked):
-        super().__init__(seats)
+    def __init__(self, asked):
+        super().__init__()
+        self.add(SEAT_NAME, SLOT, "github")
         self.asked = asked
+
+    def set(self, slot, lease):
+        """The governor keeps a standing seat's lease forgejo; the test turns it to exercise the seat."""
+        with self.cond:
+            self.lease[slot] = lease
+            self.cond.notify_all()
 
     def wait(self, seat, have, timeout, task=None):
         self.asked.put((have, timeout) if task is None else (have, timeout, task))
@@ -63,7 +70,7 @@ class Handler(governor.Handler):
             self.lingers.put("holding")
             return self.answer(200, self.lingers_end.get(timeout=GUARD * 2).encode())
         if self.path == "/stub-run":
-            self.runs.put(self.leases.get(SLOT)[0])
+            self.runs.put(self.leases.of(SEAT_NAME))
             return self.answer(200, str(self.codes.get(timeout=GUARD)).encode())
         if self.fail:
             self.leases.asked.put(("failed", None))
@@ -75,7 +82,7 @@ class SeatTest(unittest.TestCase):
     def setUp(self):
         self.asked, self.runs, self.codes = queue.Queue(), queue.Queue(), queue.Queue()
         self.lingers, self.lingers_end = queue.Queue(), queue.Queue()
-        self.leases = Leases({SEAT_NAME: SLOT}, self.asked)
+        self.leases = Leases(self.asked)
         handler = type("H", (Handler,), {"leases": self.leases, "runs": self.runs, "codes": self.codes,
                                          "lingers": self.lingers, "lingers_end": self.lingers_end})
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
@@ -114,7 +121,7 @@ class SeatTest(unittest.TestCase):
         self.assertEqual(self.next_ask(), ("forgejo", 0))
         # It holds github now, and asking with it is the acknowledgement.
         self.assertEqual(self.next_ask(), ("github", 300))
-        self.assertEqual(self.leases.get(SLOT)[:2], ("github", "github"))
+        self.assertEqual(self.leases.of(SEAT_NAME), "github")
         self.assertTrue(self.runs.empty())
 
     def test_it_names_the_task_it_runs_and_its_ask_after_the_job_clears_it(self):

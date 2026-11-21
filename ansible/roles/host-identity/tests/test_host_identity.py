@@ -21,7 +21,7 @@ from host_identity import host_device, host_names, identity_problems, roster_hos
 from host_inventory import load_inventory  # noqa: E402  the inventory reader every offline check shares
 
 ROSTER = ["desktop_workstations", "fleet_workers", "fleet_controllers"]
-DIAL_TARGETS = ["macos_hosts"]
+DIAL_TARGETS = ["macos_hosts", "linux_bare_metal"]
 KEY_A = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGaTLqfJOaCga5UzV+WsuxyRSRPcUY5GMUFloCREQ9aE"
 KEY_B = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINmhQxBIidZJ6HtH0d5CRf4sj0l1CPYymCrvN/dcypAa"
 MINI_KEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBSevnCCl7D8zA29C912Sa2isbGS9eTzhotSXl1TgUlh"
@@ -135,15 +135,16 @@ class RealInventory(unittest.TestCase):
         # Negative control: the roster groups alone give it no line.
         self.assertFalse(any(l.startswith("mac-mini,") for l in roster_known_hosts(hv, groups, ROSTER, devices)))
 
-    def test_every_dial_target_has_a_key_and_is_not_a_roster_member(self):
+    def test_every_dial_target_has_a_key_and_no_mac_is_a_roster_member(self):
         hv, groups = load_inventory(os.path.join(REPO, "ansible", "inventory.yml"))
         defaults = load(os.path.join(HERE, "..", "defaults", "main.yml"))
         self.assertEqual(defaults["host_identity_roster_groups"], ROSTER)
         self.assertEqual(defaults["host_identity_dial_target_groups"], DIAL_TARGETS)
         targets = roster_hosts(groups, DIAL_TARGETS)
-        self.assertIn("mac-mini", targets)
+        for h in ("mac-mini", "deskslim-1", "deskslim-2", "ms-a2", "tuf-b550"):
+            self.assertIn(h, targets)
         # known_hosts.yml writes the block root:root on roster members only; a Mac's root group is wheel.
-        self.assertEqual(set(targets) & set(roster_hosts(groups, ROSTER)), set())
+        self.assertEqual(set(roster_hosts(groups, ["macos_hosts"])) & set(roster_hosts(groups, ROSTER)), set())
         keyless = [h for h in targets if not hv[h].get("ssh_host_ed25519")]
         self.assertEqual(keyless, [], "set ssh_host_ed25519 for these dial targets in ansible/inventory.yml")
 

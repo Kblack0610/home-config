@@ -2612,6 +2612,24 @@ class LendTest(unittest.TestCase):
             self.assertEqual([s[:2] for s in box.plan(older + [("github", GITHUB_JOB[0], 800)], 10_180)],
                              [("return", S2)])
 
+    def test_a_busy_lend_whose_kind_has_no_waiter_is_not_taken_back(self):
+        # Once a lend's jobs start, its kind has no waiter left; read as -1, any GitHub job beat
+        # it, so every lend went back minutes after its grant and light waited 25 min for the next.
+        box, lights, seats = self.light_box(0.3)
+        light = [("light", REPO_JOB, 60)] * 3
+        repo = [(REPO, REPO_JOB, 60)]
+        with seats:
+            box.step(light + repo), box.step(light + repo, 10_060)
+            self.assertEqual({s: l["phase"] for s, l in box.lends.items()}, {S1: "granted", S2: "granted"})
+            box.gh.scopes[ORG][lights[0]]["busy"] = True
+            box.gh.scopes[f"repos/{REPO}"][REPO_SEAT]["busy"] = True
+            self.assertEqual(box.plan([("github", GITHUB_JOB[0], 57)], 10_120), [])
+            # Idle with nothing of its kind waiting, it goes back by the want rule.
+            box.gh.scopes[ORG][lights[0]]["busy"] = False
+            back = [s for s in box.plan([("github", GITHUB_JOB[0], 57)], 10_180) if s[1] == S1]
+            self.assertEqual({s[0] for s in back}, {"return"})
+            self.assertEqual(back[0][3], "no light job needs it")
+
     def test_a_jump_kind_lends_past_an_older_github_job_and_keeps_that_lend_while_busy(self):
         # ucp-2881: a gate's report job is created when its last shard ends, so it is younger than
         # every queued shard and waited out the whole Unity queue for a lend (p90 9-11 min).

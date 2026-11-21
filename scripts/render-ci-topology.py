@@ -41,6 +41,14 @@ Rendering also checks what the inventory must hold for the slots to fit their ho
   onto one slot too, and every Unity slot of that host drops the kind from its caps, so a seat is the
   one path a small job has there. A host without it runs those jobs on whole slots.
 - A host's ci_seat_kinds needs a lendable slot, or the kinds would have no runner on it.
+- A LAN Unity host's ci_small_slice ({cpus, memory}) is its standing small-job slice: the runners
+  of every small kind it serves (light and heavy in its ci_caps, forgejo where tagged, one set per
+  ci_repo_runners repo), always admitted and never lent, in a slice of their own (roles/ci-host-budget)
+  of that many CPUs and that memory. Each kind registers as many seats (<host>-small-<kind>-1 and on,
+  a repo's <host>-small-<name>-1) as fit the slice at that kind's measured p90 job size
+  (all.vars ci_small_job_size, from scripts/ci-kind-weights.py), at least one; a repo's share is
+  its kind's count over the host's repos, capped by its "seats". Each entry carries "slice": "small"
+  and the slice's "cpus" and "memory_gb", its kind's p90 "job_cpus", and no "borrows".
 - A LAN Unity host's ci_local_seats (a count) is its "local_seats": the local test runs the governor
   leases at once on that host (apps/ci-runner-governor, "Local seats"). They have no runner and no
   forge, so they are a host count, never slots, which every slot reader takes for a runner.
@@ -76,7 +84,7 @@ UNITY_GROUPS = ("unity_ci_runners", "unity_ci_mac_runners")
 KEYS = ("ci_repo_runners", "ci_pinned_runners", "unity_ci_slots",
         "unity_ci_slot_groups", "unity_ci_wide_slots", "unity_ci_lan", "unity_ci_full", "unity_ci_wide",
         "unity_ci_slot_labels", "ci_unity_slot_cpus", "ci_unity_slot_memory_max", "ci_caps", "ci_seat_kinds",
-        "ci_power", "ci_labels", "ci_local_seats")
+        "ci_power", "ci_labels", "ci_local_seats", "ci_small_slice", "ci_small_job_size")
 # The keys of ci_labels, each the label the governor sets or reads for that role.
 LABEL_ROLES = ("pool", "full", "build", "wide", "withheld", "build_withheld", "seat_withheld", "lent")
 # The roles whose label is also a topology cap name, which the governor matches against slot caps.
@@ -103,6 +111,8 @@ HOST_CAPS = ("light", "heavy", "unity", "unity-build", "unity-wide", "forgejo")
 SHARED_CAPS = ("light", "heavy")
 # The keys every ci_repo_runners entry carries; an optional "seats" caps its seat count.
 REPO_KEYS = ("repo", "name", "borrows")
+# The kinds a standing slice serves (ci_small_slice), each sized by all.vars ci_small_job_size.
+SMALL_KINDS = ("light", "heavy", "forgejo", "repo")
 
 
 def gigabytes(val):
@@ -160,6 +170,9 @@ def render(hosts, groups):
                     slot["group"] = [unity_slot(host, t) for t in group[n]]
                 slots.append(slot)
             slots += seats(host, v, caps, total, group, fails)
+            slots += small_slice(host, v, caps, fails)
+        elif v.get("ci_small_slice"):
+            fails.append(f"{host}: ci_small_slice on a host with no Unity slot")
         elif any("borrows" in r for r in v.get("ci_repo_runners", [])):
             fails.append(f"{host}: a repo runner borrows a Unity slot, but the host has none")
         slots += [{"name": p["name"], "caps": [p["cap"]], **({"repo": p["repo"]} if p.get("repo") else {})}
@@ -255,6 +268,51 @@ def seats(host, v, caps, total, group, fails):
     repo = [{"name": f"{host}-{r['name']}-{i}", "caps": ["light"], "repo": r["repo"], "borrows": r["borrows"],
              **size(r["borrows"])} for r in repos if r["borrows"] in lendable for i in range(1, repo_count(r) + 1)]
     return forgejo + kind + repo
+
+
+def small_slice(host, v, caps, fails):
+    """The standing seats of a LAN host's ci_small_slice: per kind as many as fit the slice at the
+    kind's p90 job size (all.vars ci_small_job_size), at least one. Every kind may fill
+    the slice on its own: the slice's CPU quota and memory cap are what bound them together."""
+    sl = v.get("ci_small_slice")
+    if not sl:
+        return []
+    cpus, mem = sl.get("cpus") if isinstance(sl, dict) else None, gigabytes(sl.get("memory")) if isinstance(sl, dict) else None
+    if not (type(cpus) is int and cpus >= 1 and mem and set(sl) == {"cpus", "memory"}):
+        fails.append(f"{host}: ci_small_slice is {{cpus: <whole CPUs>, memory: <N>G}}, not {sl!r}")
+        return []
+    if v.get("unity_ci_lan", True) is False:
+        fails.append(f"{host}: ci_small_slice on a cloud host, so a small job would power a paid host")
+        return []
+    budget = len(cpu_set(v["ci_cpus"])) if v.get("ci_cpus") else None
+    if budget is not None and cpus > budget:
+        fails.append(f"{host}: ci_small_slice takes {cpus} CPUs, more than its ci_cpus has ({budget})")
+    job_size = v.get("ci_small_job_size") or {}
+    repos = [r for r in v.get("ci_repo_runners", []) if all(k in r for k in REPO_KEYS)]
+    kinds = [k for k in SMALL_KINDS if (k in caps if k != "repo" else repos)]
+
+    def fit(kind):
+        size = job_size.get(kind)
+        if not (isinstance(size, dict) and all(isinstance(size.get(k), (int, float)) and size[k] > 0
+                                               for k in ("cpus", "memory_gb"))):
+            fails.append(f"{host}: ci_small_slice serves {kind}, but ci_small_job_size has no "
+                         f"{{cpus, memory_gb}} for it (scripts/ci-kind-weights.py measures them)")
+            return 1
+        return max(1, int(min(cpus / size["cpus"], mem / size["memory_gb"]) + 1e-9))
+
+    entry = {"slice": "small", "cpus": cpus, "memory_gb": mem}
+    out = []
+    for k in kinds:
+        n = fit(k)
+        job = {"job_cpus": job_size[k]["cpus"]} if isinstance(job_size.get(k), dict) and job_size[k].get("cpus") else {}
+        if k == "repo":
+            share = max(1, n // len(repos))
+            out += [{"name": f"{host}-small-{r['name']}-{i}", "caps": ["light"], "repo": r["repo"], **entry, **job}
+                    for r in repos for i in range(1, (min(share, r["seats"]) if type(r.get("seats")) is int else share) + 1)]
+        else:
+            out += [{"name": f"{host}-small-{k}-{i}", "caps": [k], **({"forge": "forgejo"} if k == "forgejo" else {}), **entry, **job}
+                    for i in range(1, n + 1)]
+    return out
 
 
 def unity_layout(v):

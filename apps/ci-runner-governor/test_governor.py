@@ -2178,7 +2178,8 @@ LCFG = governor.with_defaults({**LIVE, "standby": {}, "hosts": {"box": {}}, "poo
                                "seats": {FJ_SEAT: {"host": "box", "slot": S1, "forge": "forgejo", "repo": None,
                                                    "caps": ["forgejo"]},
                                          REPO_SEAT: {"host": "box", "slot": S2, "forge": "github", "repo": REPO,
-                                                     "caps": ["light"]}}})
+                                                     "caps": ["light"]}},
+                               "standing": {}})
 ADMITTED = {"self-hosted", "host-box", "unity", "unity-full", "light"}
 DRAINED = {"self-hosted", "host-box", "unity-withheld"}
 GITHUB_JOB = (frozenset({"self-hosted", "unity"}),)
@@ -2860,6 +2861,125 @@ class LendTest(unittest.TestCase):
         self.assertTrue(withheld and all(r in governor.WITHHELD_REASONS for _, r in got), got)
 
 
+# STANDING SLICE: box gains a standing Forgejo seat and a standing seat of the personal repo, both
+# in its small-job slice, beside the lend seats above.
+FJ_STAND, REPO_STAND = "box-small-forgejo-1", "box-small-game-1"
+STANDING = {FJ_STAND: {"host": "box", "forge": "forgejo", "repo": None, "caps": ["forgejo"], "share": 0.25},
+            REPO_STAND: {"host": "box", "forge": "github", "repo": REPO, "caps": ["light"], "share": 0.8}}
+FJ_JOB = frozenset({"docker"})
+
+
+class StandingSliceTest(unittest.TestCase):
+    def setUp(self):
+        patch = mock.patch.dict(LCFG["standing"], STANDING)
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def box(self, **standing):
+        """Box with the standing seats' exporter rows: {seat: busy} for each one online."""
+        box = Box()
+        seat_state = box.seat_state
+        box.standing = {s: {"busy": b, "online": True, "withheld": False} for s, b in standing.items()}
+        box.seat_state = lambda: {**seat_state(), **box.standing}
+        return box
+
+    def test_an_idle_standing_seat_takes_the_wait_so_nothing_is_lent(self):
+        self.assertEqual(self.box(**{FJ_STAND: False}).plan([("forgejo", FJ_JOB, 300)]), [])
+        self.assertEqual(self.box(**{REPO_STAND: False}).plan([(REPO, REPO_JOB, 300)]), [])
+        # One idle standing seat answers one wait, not two.
+        self.assertEqual([s for s, *_ in self.box(**{FJ_STAND: False}).plan([("forgejo", FJ_JOB, 300)] * 2)], ["lend"])
+        # A busy or offline standing seat answers none.
+        self.assertEqual([s for s, *_ in self.box(**{FJ_STAND: True}).plan([("forgejo", FJ_JOB, 300)])], ["lend"])
+        self.assertEqual([s for s, *_ in self.box().plan([("forgejo", FJ_JOB, 300)])], ["lend"])
+        # A standing seat of another kind answers nothing.
+        self.assertEqual([s for s, *_ in self.box(**{REPO_STAND: False}).plan([("forgejo", FJ_JOB, 300)])], ["lend"])
+
+    def test_an_idle_standing_seat_on_a_full_slice_answers_no_wait(self):
+        job = [("forgejo", FJ_JOB, 300)]
+        # The busy repo seat takes 0.8 of the slice, so the idle Forgejo seat's 0.25 does not fit.
+        self.assertEqual([s for s, *_ in self.box(**{FJ_STAND: False, REPO_STAND: True}).plan(job)], ["lend"])
+        # Nor does a granted lend go back to it.
+        box = self.box()
+        self.assertEqual(box.step(job), [("lend", S1)])
+        self.assertEqual(box.step(job, 10_060), [("grant", S1)])
+        box.standing.update({FJ_STAND: {"busy": False, "online": True, "withheld": False},
+                             REPO_STAND: {"busy": True, "online": True, "withheld": False}})
+        self.assertEqual(box.plan(job, 10_120), [])
+        box.standing[REPO_STAND]["busy"] = False
+        self.assertEqual([s for s, *_ in box.plan(job, 10_120)], ["return"])
+
+    def test_a_standing_seat_admitted_with_no_lend_is_never_withheld(self):
+        box = self.box(**{REPO_STAND: False})
+        steps = box.plan([])
+        self.assertNotIn(REPO_STAND, [seat for _, _, seat, _ in steps])
+        self.assertEqual(steps, [])
+
+    def test_a_granted_lend_goes_back_once_idle_standing_seats_cover_the_waits(self):
+        box = self.box()
+        job = [("forgejo", FJ_JOB, 60)]
+        self.assertEqual(box.step(job), [("lend", S1)])
+        self.assertEqual(box.step(job, 10_060), [("grant", S1)])
+        box.standing[FJ_STAND] = {"busy": False, "online": True, "withheld": False}
+        self.assertEqual(box.step(job, 10_120), [("return", S1)])
+
+    def two_waves(self, standing):
+        """A fan-in of two Forgejo jobs 90 s apart, read every 30 s: ([(t, steps)], {wave: start}).
+        Each cycle reads the waits, steps, then the seat takes a waiting job if it is idle and may: the
+        lend seat while its lease is forgejo, the standing seat always. Each job runs 20 s."""
+        box = self.box(**({FJ_STAND: False} if standing else {}))
+        seat = box.standing[FJ_STAND] if standing else box.fj
+        out, running, arrive = [], {}, {1: 10_000, 2: 10_090}
+        for t in range(10_000, 10_330, 30):
+            seat["busy"] = any(at <= t < at + 20 for at in running.values())
+            waits = [("forgejo", FJ_JOB, t - at) for w, at in arrive.items() if at <= t and w not in running]
+            out.append((t, box.step(waits, t)))
+            lease = "forgejo" if standing else box.leases.wait(FJ_SEAT, box.leases.of(FJ_SEAT), 0)
+            if waits and lease == "forgejo" and not seat["busy"]:
+                running[min(w for w in arrive if arrive[w] <= t and w not in running)] = t
+        return out, running
+
+    def test_a_two_wave_fan_in_runs_on_the_standing_slice_and_lends_nothing(self):
+        steps, running = self.two_waves(standing=True)
+        self.assertEqual([s for _, s in steps if s], [])
+        self.assertEqual(running, {1: 10_000, 2: 10_090})  # each wave starts the cycle it arrives
+
+    def test_negative_control_lend_seats_alone_give_the_slot_back_between_the_waves(self):
+        steps, running = self.two_waves(standing=False)
+        moves = [(t, s) for t, ss in steps for s, _ in ss]
+        # Wave 1 waits on a lend and a grant; the slot goes back once its job ends, so wave 2 waits on
+        # a second lend: the churn the standing slice removes.
+        self.assertEqual([s for _, s in moves][:6], ["lend", "grant", "return", "readmit", "lend", "grant"])
+        self.assertEqual(running, {1: 10_030, 2: 10_150})  # wave 2 waits 60 s for its second lend
+
+    def test_a_standing_forgejo_seat_holds_forgejo_for_good(self):
+        leases = governor.Leases({FJ_SEAT: S1})
+        governor.standing_leases(LCFG, leases)
+        self.assertEqual(leases.slot_of[FJ_STAND], governor.standing_slot("box"))
+        self.assertNotIn(REPO_STAND, leases.slot_of)
+        self.assertEqual(leases.wait(FJ_STAND, "github", 0), "forgejo")
+        leases.limit({S1: 0})
+        leases.set(S1, "forgejo")
+        leases.set(S1, "github")
+        self.assertEqual(leases.wait(FJ_STAND, "forgejo", 0, task="7"), "forgejo")
+        self.assertEqual(leases.tasks(), {FJ_STAND: "7"})
+        self.assertEqual(leases.wait(FJ_SEAT, "github", 0), "github")
+
+    def test_slice_units_count_each_host_slice_once_weighed_by_its_busy_seats_shares(self):
+        one = {FJ_STAND: {"busy": True, "online": True}, REPO_STAND: {"busy": False, "online": True}}
+        both = {FJ_STAND: {"busy": True, "online": True}, REPO_STAND: {"busy": True, "online": True}}
+        self.assertEqual(governor.slice_units(LCFG, one), ({"box": 1}, {"box": 0.25}))
+        self.assertEqual(governor.slice_units(LCFG, both), ({"box": 1}, {"box": 1.0}))  # 1.05: at most 1
+        self.assertEqual(governor.slice_units(LCFG, {}), ({}, {}))
+        out = governor.every_machine(LCFG, ({"box": 3}, {"box": 1.0}, {}, 0.0), ({}, {}), ({}, {}, 0),
+                                     governor.slice_units(LCFG, one))
+        self.assertEqual((out[0]["box"], round(out[1]["box"], 2)), (4, 1.25))
+
+    def test_a_standing_seat_has_its_kind(self):
+        self.assertEqual(governor.seat_kind(LCFG, FJ_STAND), "forgejo")
+        self.assertEqual(governor.seat_kind(LCFG, REPO_STAND), REPO)
+        self.assertEqual(governor.weight_kind(LCFG, REPO_STAND), "repo")
+
+
 class LeaseTest(unittest.TestCase):
     def test_wait_answers_at_once_on_a_change_and_have_on_its_timeout(self):
         leases = governor.Leases({"s": "s"})
@@ -2949,6 +3069,22 @@ class SeatConfigTest(unittest.TestCase):
             load_files(conf, topo)
         topo["hosts"]["box"]["slots"][1]["borrows"] = S1
         self.assertEqual(load_files(conf, topo)["seats"][FJ_SEAT]["slot"], S1)
+
+    def test_the_live_standing_seats_sit_on_lan_unity_hosts_and_lend_nothing(self):
+        standing = LIVE["standing"]
+        self.assertEqual({s["host"] for s in standing.values()}, {"ms-a2", "deskslim-1", "deskslim-2", "tuf-b550"})
+        self.assertFalse(set(standing) & set(LIVE["seats"]))
+        self.assertTrue({"forgejo", "light", "heavy"} <= {governor.weight_kind(LIVE, n) for n in standing})
+
+    def test_a_standing_seat_on_no_lan_unity_host_fails(self):
+        topo = {"hosts": {"box": {"site": "lan", "slots": [{"name": S1, "caps": ["unity", "light"]}]},
+                          "m": {"site": "local", "slots": [
+                              {"name": "m-small-forgejo-1", "caps": ["forgejo"], "forge": "forgejo", "slice": "small"}]}}}
+        conf = {**live_config(), "hosts": {}, "power": {}, "rates": {}}
+        with self.assertRaisesRegex(ValueError, "standing seats on no LAN Unity host: m-small-forgejo-1"):
+            load_files(conf, topo)
+        topo["hosts"]["box"]["slots"].append(topo["hosts"].pop("m")["slots"][0])
+        self.assertEqual(load_files(conf, topo)["standing"]["m-small-forgejo-1"]["host"], "box")
 
 
 # A host with two local seats and a floor of one, so a step up and a step down both show.

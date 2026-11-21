@@ -44,7 +44,19 @@
       {"name": "deskslim-1-dotfiles-private-2", "caps": ["light"], "repo": "Kblack0610/.dotfiles-private", "borrows": "deskslim-1-unity-pool-1", "cpus": 6, "memory_gb": 14},
       {"name": "deskslim-1-dotfiles-private-3", "caps": ["light"], "repo": "Kblack0610/.dotfiles-private", "borrows": "deskslim-1-unity-pool-1", "cpus": 6, "memory_gb": 14},
       {"name": "deskslim-1-gungan-speak-1", "caps": ["light"], "repo": "Kblack0610/gungan-speak", "borrows": "deskslim-1-unity-pool-2", "cpus": 6, "memory_gb": 14},
-      {"name": "deskslim-1-personal-sites-1", "caps": ["light"], "repo": "Kblack0610/personal-sites", "borrows": "deskslim-1-unity-pool-3", "cpus": 8, "memory_gb": 14}
+      {"name": "deskslim-1-personal-sites-1", "caps": ["light"], "repo": "Kblack0610/personal-sites", "borrows": "deskslim-1-unity-pool-3", "cpus": 8, "memory_gb": 14},
+      {"name": "deskslim-1-small-light-1", "caps": ["light"], "slice": "small", "cpus": 6, "memory_gb": 8, "job_cpus": 2.86},
+      {"name": "deskslim-1-small-light-2", "caps": ["light"], "slice": "small", "cpus": 6, "memory_gb": 8, "job_cpus": 2.86},
+      {"name": "deskslim-1-small-heavy-1", "caps": ["heavy"], "slice": "small", "cpus": 6, "memory_gb": 8, "job_cpus": 3.49},
+      {"name": "deskslim-1-small-forgejo-1", "caps": ["forgejo"], "forge": "forgejo", "slice": "small", "cpus": 6, "memory_gb": 8, "job_cpus": 1.44},
+      {"name": "deskslim-1-small-forgejo-2", "caps": ["forgejo"], "forge": "forgejo", "slice": "small", "cpus": 6, "memory_gb": 8, "job_cpus": 1.44},
+      {"name": "deskslim-1-small-forgejo-3", "caps": ["forgejo"], "forge": "forgejo", "slice": "small", "cpus": 6, "memory_gb": 8, "job_cpus": 1.44},
+      {"name": "deskslim-1-small-forgejo-4", "caps": ["forgejo"], "forge": "forgejo", "slice": "small", "cpus": 6, "memory_gb": 8, "job_cpus": 1.44},
+      {"name": "deskslim-1-small-dotfiles-private-1", "caps": ["light"], "repo": "Kblack0610/.dotfiles-private", "slice": "small", "cpus": 6, "memory_gb": 8, "job_cpus": 0.63},
+      {"name": "deskslim-1-small-dotfiles-private-2", "caps": ["light"], "repo": "Kblack0610/.dotfiles-private", "slice": "small", "cpus": 6, "memory_gb": 8, "job_cpus": 0.63},
+      {"name": "deskslim-1-small-dotfiles-private-3", "caps": ["light"], "repo": "Kblack0610/.dotfiles-private", "slice": "small", "cpus": 6, "memory_gb": 8, "job_cpus": 0.63},
+      {"name": "deskslim-1-small-gungan-speak-1", "caps": ["light"], "repo": "Kblack0610/gungan-speak", "slice": "small", "cpus": 6, "memory_gb": 8, "job_cpus": 0.63},
+      {"name": "deskslim-1-small-personal-sites-1", "caps": ["light"], "repo": "Kblack0610/personal-sites", "slice": "small", "cpus": 6, "memory_gb": 8, "job_cpus": 0.63}
     ]},
     "deskslim-2": {"site": "local", "full": true, "slots": [
       {"name": "deskslim-2-unity-pool-1", "caps": ["unity"]},
@@ -84,7 +96,19 @@
       {"name": "deskslim-2-dotfiles-private-2", "caps": ["light"], "repo": "Kblack0610/.dotfiles-private", "borrows": "deskslim-2-unity-pool-1", "cpus": 6, "memory_gb": 14},
       {"name": "deskslim-2-dotfiles-private-3", "caps": ["light"], "repo": "Kblack0610/.dotfiles-private", "borrows": "deskslim-2-unity-pool-1", "cpus": 6, "memory_gb": 14},
       {"name": "deskslim-2-gungan-speak-1", "caps": ["light"], "repo": "Kblack0610/gungan-speak", "borrows": "deskslim-2-unity-pool-2", "cpus": 6, "memory_gb": 14},
-      {"name": "deskslim-2-personal-sites-1", "caps": ["light"], "repo": "Kblack0610/personal-sites", "borrows": "deskslim-2-unity-pool-3", "cpus": 8, "memory_gb": 14}
+      {"name": "deskslim-2-personal-sites-1", "caps": ["light"], "repo": "Kblack0610/personal-sites", "borrows": "deskslim-2-unity-pool-3", "cpus": 8, "memory_gb": 14},
+      {"name": "deskslim-2-small-light-1", "caps": ["light"], "slice": "small", "cpus": 6, "memory_gb": 8, "job_cpus": 2.86},
+      {"name": "deskslim-2-small-light-2", "caps": ["light"], "slice": "small", "cpus": 6, "memory_gb": 8, "job_cpus": 2.86},
+      {"name": "deskslim-2-small-heavy-1", "caps": ["heavy"], "slice": "small", "cpus": 6, "memory_gb": 8, "job_cpus": 3.49},
+      {"name": "deskslim-2-small-forgejo-1", "caps": ["forgejo"], "forge": "forgejo", "slice": "small", "cpus": 6, "memory_gb": 8, "job_cpus": 1.44},
+      {"name": "deskslim-2-small-forgejo-2", "caps": ["forgejo"], "forge": "forgejo", "slice": "small", "cpus": 6, "memory_gb": 8, "job_cpus": 1.44},
+      {"name": "deskslim-2-small-forgejo-3", "caps": ["forgejo"], "forge": "forgejo", "slice": "small", "cpus": 6, "memory_gb": 8, "job_cpus": 1.44},
+      {"name": "deskslim-2-small-forgejo-4", "caps": ["forgejo"], "forge": "forgejo", "slice": "small", "cpus": 6, "memory_gb": 8, "job_cpus": 1.44},
+      {"name": "deskslim-2-small-dotfiles-private-1", "caps": ["light"], "repo": "Kblack0610/.dotfiles-private", "slice": "small", "cpus": 6, "memory_gb": 8, "job_cpus": 0.63},
+      {"name": "deskslim-2-small-dotfiles-private-2", "caps": ["light"], "repo": "Kblack0610/.dotfiles-private", "slice": "small", "cpus": 6, "memory_gb": 8, "job_cpus": 0.63},
+      {"name": "deskslim-2-small-dotfiles-private-3", "caps": ["light"], "repo": "Kblack0610/.dotfiles-private", "slice": "small", "cpus": 6, "memory_gb": 8, "job_cpus": 0.63},
+      {"name": "deskslim-2-small-gungan-speak-1", "caps": ["light"], "repo": "Kblack0610/gungan-speak", "slice": "small", "cpus": 6, "memory_gb": 8, "job_cpus": 0.63},
+      {"name": "deskslim-2-small-personal-sites-1", "caps": ["light"], "repo": "Kblack0610/personal-sites", "slice": "small", "cpus": 6, "memory_gb": 8, "job_cpus": 0.63}
     ]},
     "mac-mini": {"site": "local", "slots": [
       {"name": "mac-mini-mac", "caps": ["macos"], "repo": "BlackNBrownStudios/platform"},
@@ -113,7 +137,14 @@
       {"name": "ms-a2-unity-pool-1-heavy-3", "caps": ["heavy"], "borrows": "ms-a2-unity-pool-1", "cpus": 6, "memory_gb": 22},
       {"name": "ms-a2-unity-pool-2-heavy-1", "caps": ["heavy"], "borrows": "ms-a2-unity-pool-2", "cpus": 6, "memory_gb": 16},
       {"name": "ms-a2-unity-pool-2-heavy-2", "caps": ["heavy"], "borrows": "ms-a2-unity-pool-2", "cpus": 6, "memory_gb": 16},
-      {"name": "ms-a2-unity-pool-2-heavy-3", "caps": ["heavy"], "borrows": "ms-a2-unity-pool-2", "cpus": 6, "memory_gb": 16}
+      {"name": "ms-a2-unity-pool-2-heavy-3", "caps": ["heavy"], "borrows": "ms-a2-unity-pool-2", "cpus": 6, "memory_gb": 16},
+      {"name": "ms-a2-small-light-1", "caps": ["light"], "slice": "small", "cpus": 6, "memory_gb": 8, "job_cpus": 2.86},
+      {"name": "ms-a2-small-light-2", "caps": ["light"], "slice": "small", "cpus": 6, "memory_gb": 8, "job_cpus": 2.86},
+      {"name": "ms-a2-small-heavy-1", "caps": ["heavy"], "slice": "small", "cpus": 6, "memory_gb": 8, "job_cpus": 3.49},
+      {"name": "ms-a2-small-forgejo-1", "caps": ["forgejo"], "forge": "forgejo", "slice": "small", "cpus": 6, "memory_gb": 8, "job_cpus": 1.44},
+      {"name": "ms-a2-small-forgejo-2", "caps": ["forgejo"], "forge": "forgejo", "slice": "small", "cpus": 6, "memory_gb": 8, "job_cpus": 1.44},
+      {"name": "ms-a2-small-forgejo-3", "caps": ["forgejo"], "forge": "forgejo", "slice": "small", "cpus": 6, "memory_gb": 8, "job_cpus": 1.44},
+      {"name": "ms-a2-small-forgejo-4", "caps": ["forgejo"], "forge": "forgejo", "slice": "small", "cpus": 6, "memory_gb": 8, "job_cpus": 1.44}
     ]},
     "tuf-b550": {"site": "local", "full": true, "slots": [
       {"name": "tuf-b550-unity-pool-1", "caps": ["unity"]},
@@ -166,7 +197,19 @@
       {"name": "tuf-b550-dotfiles-private-2", "caps": ["light"], "repo": "Kblack0610/.dotfiles-private", "borrows": "tuf-b550-unity-pool-1", "cpus": 6, "memory_gb": 14},
       {"name": "tuf-b550-dotfiles-private-3", "caps": ["light"], "repo": "Kblack0610/.dotfiles-private", "borrows": "tuf-b550-unity-pool-1", "cpus": 6, "memory_gb": 14},
       {"name": "tuf-b550-gungan-speak-1", "caps": ["light"], "repo": "Kblack0610/gungan-speak", "borrows": "tuf-b550-unity-pool-2", "cpus": 6, "memory_gb": 14},
-      {"name": "tuf-b550-personal-sites-1", "caps": ["light"], "repo": "Kblack0610/personal-sites", "borrows": "tuf-b550-unity-pool-3", "cpus": 8, "memory_gb": 14}
+      {"name": "tuf-b550-personal-sites-1", "caps": ["light"], "repo": "Kblack0610/personal-sites", "borrows": "tuf-b550-unity-pool-3", "cpus": 8, "memory_gb": 14},
+      {"name": "tuf-b550-small-light-1", "caps": ["light"], "slice": "small", "cpus": 6, "memory_gb": 8, "job_cpus": 2.86},
+      {"name": "tuf-b550-small-light-2", "caps": ["light"], "slice": "small", "cpus": 6, "memory_gb": 8, "job_cpus": 2.86},
+      {"name": "tuf-b550-small-heavy-1", "caps": ["heavy"], "slice": "small", "cpus": 6, "memory_gb": 8, "job_cpus": 3.49},
+      {"name": "tuf-b550-small-forgejo-1", "caps": ["forgejo"], "forge": "forgejo", "slice": "small", "cpus": 6, "memory_gb": 8, "job_cpus": 1.44},
+      {"name": "tuf-b550-small-forgejo-2", "caps": ["forgejo"], "forge": "forgejo", "slice": "small", "cpus": 6, "memory_gb": 8, "job_cpus": 1.44},
+      {"name": "tuf-b550-small-forgejo-3", "caps": ["forgejo"], "forge": "forgejo", "slice": "small", "cpus": 6, "memory_gb": 8, "job_cpus": 1.44},
+      {"name": "tuf-b550-small-forgejo-4", "caps": ["forgejo"], "forge": "forgejo", "slice": "small", "cpus": 6, "memory_gb": 8, "job_cpus": 1.44},
+      {"name": "tuf-b550-small-dotfiles-private-1", "caps": ["light"], "repo": "Kblack0610/.dotfiles-private", "slice": "small", "cpus": 6, "memory_gb": 8, "job_cpus": 0.63},
+      {"name": "tuf-b550-small-dotfiles-private-2", "caps": ["light"], "repo": "Kblack0610/.dotfiles-private", "slice": "small", "cpus": 6, "memory_gb": 8, "job_cpus": 0.63},
+      {"name": "tuf-b550-small-dotfiles-private-3", "caps": ["light"], "repo": "Kblack0610/.dotfiles-private", "slice": "small", "cpus": 6, "memory_gb": 8, "job_cpus": 0.63},
+      {"name": "tuf-b550-small-gungan-speak-1", "caps": ["light"], "repo": "Kblack0610/gungan-speak", "slice": "small", "cpus": 6, "memory_gb": 8, "job_cpus": 0.63},
+      {"name": "tuf-b550-small-personal-sites-1", "caps": ["light"], "repo": "Kblack0610/personal-sites", "slice": "small", "cpus": 6, "memory_gb": 8, "job_cpus": 0.63}
     ]}
   }
 }

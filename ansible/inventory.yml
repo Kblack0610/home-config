@@ -36,6 +36,16 @@ all:
       build_withheld: unity-build-withheld
       seat_withheld: light-withheld
       lent: unity-lent
+    # Each small kind's p90 job: cores and memory in G, one sample per busy runner per minute
+    # pooled over every runner of the kind (scripts/ci-kind-weights.py --days 3, to
+    # 2026-11-21 06:09Z: light 3144 samples, heavy 246, forgejo 1993, repo 346). A host's
+    # ci_small_slice registers as many seats of each kind as fit it at this size
+    # (scripts/render-ci-topology.py). Re-measure and re-render when a kind's p90 moves.
+    ci_small_job_size:
+      light: {cpus: 2.86, memory_gb: 0.7}
+      heavy: {cpus: 3.49, memory_gb: 2.7}
+      forgejo: {cpus: 1.44, memory_gb: 0.1}
+      repo: {cpus: 0.63, memory_gb: 0.3}
 
   children:
     # Provisional tiers for placement records; P2 qualification and P5 review
@@ -458,6 +468,17 @@ all:
     # host that takes light or heavy sets it (hc-693): seats were not the OOM source (24h to
     # 2026-11-19: 6, 5 and 5 kills on deskslim-2, ms-a2 and deskslim-1 with none, 3 on
     # windows-media-ci, since retired, with seats). Roll back one host: drop its key, re-render, apply.
+    # ci_small_slice: {cpus, memory}: the host's standing small-job slice (plan
+    # why-is-most-of-dynamic-cosmos P2). Its light, heavy, Forgejo and repo seats are always
+    # admitted and never lent, so a small job starts without a lend. They run in ci-small.slice
+    # (roles/ci-host-budget): any of the Unity CPUs (ci_unity_cpus, else ci_cpus), at most `cpus`
+    # of them (CPUQuota) and `memory` (MemoryMax), at the same CPUWeight as Unity, so the slice
+    # keeps its share when every Unity slot is busy. Its memory is part of ci_memory_max, which
+    # ci_unity_memory_max fills on its own, so the whole CI budget bounds a Unity worst case plus
+    # the slice (kept shared, ask hyXNOV: ms-a2 and tuf-b550 read FULL). Each kind registers as many seats as fit it at all.vars
+    # ci_small_job_size. Sized at 6 CPUs and 8G on every pool host: under one Unity slot, on
+    # cores idle at baseline (163 of 248 free, 2026-11-20). Roll back one host: see
+    # docs/runbooks/unity-ci-host.md "Standing slice".
     ci_hosts:
       hosts:
         # ms-a2: 16 cores / 32 threads, SMT siblings n and n+16 (sysfs,
@@ -474,6 +495,7 @@ all:
         ms-a2:
           ci_caps: [light, heavy, unity, unity-build, forgejo]
           ci_seat_kinds: [light, heavy]
+          ci_small_slice: {cpus: 6, memory: 8G}
           ci_cpus: 2-15,18-31
           ci_unity_slot_share: true
           ci_memory_max: 70G
@@ -490,6 +512,7 @@ all:
         deskslim-2:
           ci_caps: [light, heavy, unity, forgejo]
           ci_seat_kinds: [light, heavy]
+          ci_small_slice: {cpus: 6, memory: 8G}
           ci_cpus: 2-11,14-23
           ci_memory_max: 48G
           ci_unity_cpus: 2-11,14-23
@@ -502,6 +525,7 @@ all:
         deskslim-1:
           ci_caps: [light, heavy, unity, forgejo]
           ci_seat_kinds: [light, heavy]
+          ci_small_slice: {cpus: 6, memory: 8G}
           ci_cpus: 2-11,14-23
           ci_memory_max: 48G
           ci_unity_cpus: 2-11,14-23
@@ -541,6 +565,7 @@ all:
         tuf-b550:
           ci_caps: [light, heavy, unity, forgejo]
           ci_seat_kinds: [light, heavy]
+          ci_small_slice: {cpus: 6, memory: 8G}
           ci_cpus: 2-15,18-31
           ci_memory_max: 50G
           ci_unity_cpus: 2-15,18-31

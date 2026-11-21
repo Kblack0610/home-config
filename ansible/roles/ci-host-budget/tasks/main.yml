@@ -55,6 +55,23 @@
     loop_var: ci_unity_slot
   register: _ci_slot_units
 
+# The standing small-job slice where the inventory sets ci_small_slice; a host that drops it
+# loses the unit, so no seat lands in a stale cap.
+- name: Install the standing small-job slice
+  ansible.builtin.template:
+    src: ci-small.slice.j2
+    dest: "/etc/systemd/system/{{ ci_small_slice_name }}"
+    mode: "0644"
+  when: ci_small_slice | length > 0
+  register: _ci_small_unit
+
+- name: Remove the standing small-job slice where the inventory sets none
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ ci_small_slice_name }}"
+    state: absent
+  when: ci_small_slice | length == 0
+  register: _ci_small_removed
+
 # A host that drops to fewer slots (or back to a shared slice) loses the extra
 # slot slices here, so no stale cpuset is left for a unit to land in.
 - name: Find per-slot Unity slices
@@ -90,6 +107,7 @@
   when: >-
     _ci_slice_units.changed or _ci_retired_units.changed
     or _ci_slot_units.changed or _ci_slot_removed.changed
+    or _ci_small_unit.changed or _ci_small_removed.changed
 
 # k3s pin (k3s_cpus), its own file so the "Retire CI on no_ci_hosts" play in
 # site.yml can run the removal half with k3s_cpus unset.

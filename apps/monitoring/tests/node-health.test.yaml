@@ -261,3 +261,36 @@ tests:
       - eval_time: 14m
         alertname: HostPowerEvent
         exp_alerts: []
+
+  # A failed nut unit, or a stopped nut-monitor, fires after 10m; a masked nut-server
+  # (inactive, not failed) on a healthy secondary does not.
+  - name: a failed nut-server or a stopped nut-monitor fires NutUnitDown, a masked server does not
+    interval: 1m
+    input_series:
+      - series: 'node_systemd_unit_state{instance="ms-a2:9100",name="nut-server.service",state="failed"}'
+        values: '1x20'
+      - series: 'node_systemd_unit_state{instance="ms-a2:9100",name="nut-monitor.service",state="active"}'
+        values: '1x20'
+      - series: 'node_systemd_unit_state{instance="tuf:9100",name="nut-monitor.service",state="active"}'
+        values: '0x20'
+      - series: 'node_systemd_unit_state{instance="ok:9100",name="nut-server.service",state="failed"}'
+        values: '0x20'
+      - series: 'node_systemd_unit_state{instance="ok:9100",name="nut-monitor.service",state="active"}'
+        values: '1x20'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: NutUnitDown
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: NutUnitDown
+        exp_alerts:
+          - exp_labels: {alertname: NutUnitDown, severity: warning, fleet: fix, system: deploy, category: node-health, instance: "ms-a2:9100", name: "nut-server.service", state: "failed"}
+            exp_annotations:
+              runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/nut-ups.md#troubleshooting
+              summary: "NUT unit nut-server.service down on ms-a2:9100"
+              description: "nut-server.service on ms-a2:9100 has been failed, or (nut-monitor) not running, for 10m. Without upsmon the host is hard-cut at the next power loss instead of shut down. Check journalctl -u nut-server.service and re-apply the nut role (ansible/roles/nut)."
+          - exp_labels: {alertname: NutUnitDown, severity: warning, fleet: fix, system: deploy, category: node-health, instance: "tuf:9100", name: "nut-monitor.service", state: "active"}
+            exp_annotations:
+              runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/nut-ups.md#troubleshooting
+              summary: "NUT unit nut-monitor.service down on tuf:9100"
+              description: "nut-monitor.service on tuf:9100 has been failed, or (nut-monitor) not running, for 10m. Without upsmon the host is hard-cut at the next power loss instead of shut down. Check journalctl -u nut-monitor.service and re-apply the nut role (ansible/roles/nut)."

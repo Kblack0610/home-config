@@ -140,6 +140,19 @@ spec:
             fleet: fix
           annotations:
             summary: "{{ $labels.repo }} {{ $labels.job_name }} has waited {{ $value | humanizeDuration }} for labels {{ $labels.labels }} that no runner it may use carries: docs/runbooks/unity-ci-host.md#a-job-no-runner-serves"
+        # A light or heavy job waiting 15 minutes for a seat: the governor lends seats a slot only
+        # while that kind's wait is the oldest, so a starved kind sits withheld and reads as down.
+        # 2026-11-20: 30 light jobs waited up to 31 minutes while every light seat sat withheld and
+        # nothing fired (hc-801). One alert per kind, not per job, so a backlog gets one owner.
+        - alert: CiSmallJobQueuedTooLong
+          expr: max by (pool) (github_actions_job_waiting{pool=~"light|heavy",forge!="forgejo",stuck!="true"}) > 900
+          for: 5m
+          labels:
+            severity: warning
+            category: capacity
+            fleet: fix
+          annotations:
+            summary: "A {{ $labels.pool }} job has waited {{ $value | humanizeDuration }} for a seat: docs/runbooks/unity-ci-host.md#a-small-job-waiting-for-a-seat"
         # A light or heavy job on a whole Unity slot (<host>-unity-pool-N) of a host with light or
         # heavy seats: a second path for a small job is back, so it takes a slot a Unity job
         # needed (hc-693). The host comes from the runner name, since ci_runner_job carries none.

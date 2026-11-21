@@ -229,6 +229,31 @@ tests:
           - exp_labels: {alertname: CiSmallJobOnWholeSlot, severity: warning, category: capacity, fleet: fix, host: ms-a2, runner: ms-a2-unity-pool-1, kind: light}
             exp_annotations: {summary: "ms-a2-unity-pool-1 has kept taking light jobs on a whole Unity slot for 10 minutes, though ms-a2 has seats for small jobs: docs/runbooks/unity-ci-host.md#a-small-job-on-a-whole-slot"}
 
+  - name: a small job waiting 15 minutes for a seat warns once per kind
+    interval: 1m
+    input_series:
+      # Two light jobs past the line give one light alert; heavy stays under it; a stuck
+      # jobless row and a Forgejo job are not this alert's.
+      - series: 'github_actions_job_waiting{pool="light",repo="unity-core-playground",job_name="a",forge="github",stuck="false"}'
+        values: '600+60x30'
+      - series: 'github_actions_job_waiting{pool="light",repo="platform",job_name="b",forge="github",stuck="false"}'
+        values: '660+60x30'
+      - series: 'github_actions_job_waiting{pool="heavy",repo="platform",job_name="c",forge="github",stuck="false"}'
+        values: '60+60x30'
+      - series: 'github_actions_job_waiting{pool="light",repo="platform",job_name="d",forge="github",stuck="true"}'
+        values: '99999x30'
+      - series: 'github_actions_job_waiting{pool="light",repo="home-config",job_name="e",forge="forgejo",stuck="false"}'
+        values: '99999x30'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: CiSmallJobQueuedTooLong
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: CiSmallJobQueuedTooLong
+        exp_alerts:
+          - exp_labels: {alertname: CiSmallJobQueuedTooLong, severity: warning, category: capacity, fleet: fix, pool: light}
+            exp_annotations: {summary: "A light job has waited 21m 0s for a seat: docs/runbooks/unity-ci-host.md#a-small-job-waiting-for-a-seat"}
+
   - name: a low GitHub API bucket warns after 10 minutes, per scope, across a pod restart
     interval: 1m
     input_series:

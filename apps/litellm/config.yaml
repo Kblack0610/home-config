@@ -742,7 +742,7 @@ model_list:
   # harness only for an allowlisted public project (README, OpenCode free key).
   # The list rotates: a model OpenCode drops answers 400 "Model is unavailable".
   # No fallback edge: a refusal fails the call, never reaches a paid route.
-  # key-limit OPENCODE_GO_API_KEY: none published (opencode.ai/docs/go gives 5h and weekly allowances only, read 2026-11-18)
+  # key-limit OPENCODE_GO_API_KEY: none published (opencode.ai/docs/go gives 5h and weekly allowances only, read 2026-11-18; beam-free 429s past about 2,000 requests a UTC day, observed 2026-11-21, README)
   - model_name: "opencode-free (beam-free)"
     litellm_params:
       model: "openai/beam-free"

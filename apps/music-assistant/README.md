@@ -27,6 +27,8 @@ MA 2.x requires a login and the first visitor to an un-onboarded server creates 
 3. Settings -> Providers -> Add music providers: **Spotify** (log in), **Radio Browser**, **Jellyfin** (server URL `http://jellyfin.jellyfin.svc.cluster.local`, a Jellyfin user).
 4. Home Assistant: Settings -> Devices & services -> Add integration -> **Music Assistant**, URL `http://music-assistant.music-assistant.svc.cluster.local:8095`, then approve the login redirect (or paste a long-lived token from MA Settings -> Profile). This cannot be seeded code-first like the Snapcast entry because MA's API needs a token that only exists after step 1.
 
+5. Settings -> Providers -> Add -> **Spotify Connect** (a plugin provider; needs the Spotify provider from step 3 logged in with a Premium account). It makes each MA player, so each Snapcast room, appear in the Spotify app's device list; picking one plays through MA to that room, so grouping and volume stay in MA and HA. This is UI-only state (it lives in `settings.json`, which the backup carries), so there is no manifest for it. It relies on `hostNetwork: true` for mDNS discovery. Chosen over a librespot source on snapserver (one "Whole House" device, but a change to the pinned snapserver image); ask 2p7o9T, 2026-11-20. Not yet verified from a phone: after enabling, confirm the rooms show in the Spotify app on the same LAN and fix this step if the plugin's name or options differ.
+
 Snapcast players show up in MA only once snapclients are connected (Phase 2/3).
 
 ## Backup and rebuild
@@ -77,6 +79,7 @@ With no archive, MA starts un-onboarded and the first visitor creates the admin.
 
 - **Snapcast**: enable "Use existing Snapserver", host `snapserver-direct.snapcast.svc.cluster.local`, control port `1705`.
 - **Radio Browser**: no settings.
+- **Spotify Connect**: re-add the plugin after Spotify (First run step 5).
 - **Spotify**: log in again. The old login cannot be carried over by hand, because it is encrypted with the lost `encryption_key`.
 
 The Home Assistant Music Assistant integration also has to be re-authorised (step 4 of `First run`), since its token lived in the lost `auth.db`.

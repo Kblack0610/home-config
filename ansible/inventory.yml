@@ -34,8 +34,6 @@ all:
       wide: unity-wide
       withheld: unity-withheld
       build_withheld: unity-build-withheld
-      seat_withheld: light-withheld
-      lent: unity-lent
     # Each small kind's p90 job: cores and memory in G, one sample per busy runner per minute
     # pooled over every runner of the kind (scripts/ci-kind-weights.py --days 3, to
     # 2026-11-21 06:09Z: light 3144 samples, heavy 246, forgejo 1993, repo 346). A host's
@@ -380,16 +378,14 @@ all:
           # Runners for personal repos, which cannot use the org's slots and have no hosted
           # minutes left: short lint, unit and Next.js build runs. One set on each of deskslim-2,
           # deskslim-1 and tuf-b550, so one host down or cooling does not stall them; not on
-          # ms-a2 while host-headroom.py rates it FULL. borrows: the Unity test slot it runs on;
-          # the renderer registers <host>-<name>-1 and on, one seat per MIN_JOB_CORES of that slot,
-          # each withheld until the governor lends it the slot and admits as many as the measured
-          # repo weight fits, so it adds jobs, never cores (apps/ci-runner-governor, "Lending"). seats: caps
-          # that count for a repo heavier than the shared repo weight (its Next.js builds). Forgejo seats
-          # need no entry: the renderer puts one on every lendable slot whose host carries forgejo.
+          # ms-a2 while host-headroom.py rates it FULL. The renderer registers <host>-small-<name>-1
+          # and on in the host's ci_small_slice, as many as fit it at the repo kind's p90 job size,
+          # always admitted, so they add jobs, never cores. seats: caps that count for a repo
+          # heavier than the shared repo weight (its Next.js builds).
           ci_repo_runners: &personal_repo_runners
-            - {repo: Kblack0610/.dotfiles-private, name: dotfiles-private, borrows: 1}
-            - {repo: Kblack0610/gungan-speak, name: gungan-speak, borrows: 2, seats: 1}
-            - {repo: Kblack0610/personal-sites, name: personal-sites, borrows: 3, seats: 1}
+            - {repo: Kblack0610/.dotfiles-private, name: dotfiles-private}
+            - {repo: Kblack0610/gungan-speak, name: gungan-speak, seats: 1}
+            - {repo: Kblack0610/personal-sites, name: personal-sites, seats: 1}
         deskslim-1:
           unity_ci_slots: 3
           unity_ci_full: true
@@ -458,20 +454,11 @@ all:
     # jobs. A host's own slots of a kind need that kind here; a cloud host takes no
     # light or heavy, so a small job never powers a paid host. Drop a cap and
     # re-apply to take it off every slot of the host.
-    # Forgejo seats per lendable slot are not set here: render-ci-topology.py registers
-    # floor(slot CPUs / MIN_JOB_CORES) and the governor admits as many as a measured weight
-    # fits (ci-runner-governor config.json "weights"). Repo seats stay one per slot.
     # ci_local_seats: how many local test runs (no forge, no runner) the governor leases at once
     # on a LAN Unity host; rendered as the host's "local_seats", never as slots.
-    # ci_seat_kinds: the GitHub kinds (light, heavy; each in ci_caps) that also get seats on
-    # the host's lendable slots, so several small jobs share one lent slot; the host's Unity slots
-    # then drop those kinds from their caps, so a seat is a small job's one path there. Every LAN
-    # host that takes light or heavy sets it (hc-693): seats were not the OOM source (24h to
-    # 2026-11-19: 6, 5 and 5 kills on deskslim-2, ms-a2 and deskslim-1 with none, 3 on
-    # windows-media-ci, since retired, with seats). Roll back one host: drop its key, re-render, apply.
     # ci_small_slice: {cpus, memory}: the host's standing small-job slice (plan
     # why-is-most-of-dynamic-cosmos P2). Its light, heavy, Forgejo and repo seats are always
-    # admitted and never lent, so a small job starts without a lend. They run in ci-small.slice
+    # admitted, so a small job starts at once, and no Unity slot of the host takes a small kind. They run in ci-small.slice
     # (roles/ci-host-budget): any of the Unity CPUs (ci_unity_cpus, else ci_cpus), at most `cpus`
     # of them (CPUQuota) and `memory` (MemoryMax), at the same CPUWeight as Unity, so the slice
     # keeps its share when every Unity slot is busy. Its memory is part of ci_memory_max, which
@@ -495,7 +482,6 @@ all:
         # trial since 2026-11-19); the lists below size them rather than fence them.
         ms-a2:
           ci_caps: [light, heavy, unity, unity-build, forgejo]
-          ci_seat_kinds: [light, heavy]
           ci_small_slice: {cpus: 6, memory: 8G}
           ci_cpus: 2-15,18-31
           ci_unity_slot_share: true
@@ -507,12 +493,10 @@ all:
           k3s_cpus: 0-1,16-17
         # deskslim-2: 12 cores / 24 threads, SMT siblings n and n+12, 60G. Cores
         # 0-1 are k3s and the OS; three Unity slots of 14G on cores 2-11, slot 3 with
-        # four cores, which leaves 12G for the host and k3s. Its light and heavy jobs run
-        # on seats (ci_seat_kinds), and the governor lends its Unity slots to those, to
-        # Forgejo and to the personal repo runners.
+        # four cores, which leaves 12G for the host and k3s. Its light, heavy, Forgejo and
+        # personal repo jobs run on the standing seats of its ci_small_slice.
         deskslim-2:
           ci_caps: [light, heavy, unity, forgejo]
-          ci_seat_kinds: [light, heavy]
           ci_small_slice: {cpus: 6, memory: 8G}
           ci_cpus: 2-11,14-23
           ci_memory_max: 48G
@@ -525,7 +509,6 @@ all:
         # and n+12, lscpu 2026-11-18, 61G), so the same slots and caps.
         deskslim-1:
           ci_caps: [light, heavy, unity, forgejo]
-          ci_seat_kinds: [light, heavy]
           ci_small_slice: {cpus: 6, memory: 8G}
           ci_cpus: 2-11,14-23
           ci_memory_max: 48G
@@ -565,7 +548,6 @@ all:
         # job dies on the 50G cap, or MemAvailable on the host drops under 6G.
         tuf-b550:
           ci_caps: [light, heavy, unity, forgejo]
-          ci_seat_kinds: [light, heavy]
           ci_small_slice: {cpus: 6, memory: 8G}
           ci_cpus: 2-15,18-31
           ci_memory_max: 50G

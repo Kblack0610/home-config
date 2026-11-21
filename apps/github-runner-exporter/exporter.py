@@ -131,9 +131,9 @@ def load_topology(path):
 
 RENDERED = load_topology(os.environ.get("TOPOLOGY", "/topology/topology.json"))
 TOPOLOGY = RENDERED["hosts"]
-# slot name -> {host, caps, repo, forge, borrows, slice}
+# slot name -> {host, caps, repo, forge, slice}
 SLOTS = {s["name"]: {"host": h, "caps": s["caps"], "repo": s.get("repo"), "forge": s.get("forge", "github"),
-                     "borrows": s.get("borrows"), "slice": s.get("slice")}
+                     "slice": s.get("slice")}
          for h, e in TOPOLOGY.items() for s in e["slots"]}
 TOPOLOGY_HOSTS = sorted(TOPOLOGY, key=len, reverse=True)
 # Repos whose repo-scoped runners, active runs and recent runs are read: RUN_REPOS, plus
@@ -241,10 +241,8 @@ def site_of(host):
 # out of the gate pool's numbers. unity-wide is before unity: a wide job asks for both.
 POOL_LABELS = ("light", "heavy", "unity-wide", "unity", "unity-build")
 # The labels apps/ci-runner-governor swaps a runner's pool labels for while it holds it back.
-# light-withheld: a repo runner while the governor has not lent it the Unity slot it borrows.
 LABELS = RENDERED["labels"]
-WITHHELD_LABELS = {LABELS["withheld"]: LABELS["pool"], LABELS["build_withheld"]: LABELS["build"],
-                   LABELS["seat_withheld"]: "light"}
+WITHHELD_LABELS = {LABELS["withheld"]: LABELS["pool"], LABELS["build_withheld"]: LABELS["build"]}
 # A queued run with no jobs this old never gets a runner (GitHub creates a run's
 # jobs within seconds). It is labelled stuck="true" so boards can list it apart
 # instead of letting its age stand for the queue's.
@@ -400,12 +398,12 @@ def host_of(name, labels):
 
 def job_kind(name, runner_labels, job_labels):
     """The kind of job a busy runner runs, for ci_runner_job: forgejo for a Forgejo seat, repo for
-    a repo runner on a borrowed slot or a standing slice, else the pool the job asks for, else the runner's one cap.
+    a repo runner in a standing slice, else the pool the job asks for, else the runner's one cap.
     None when that leaves it open (a slot of several caps on a job whose labels name none)."""
     slot = SLOTS.get(name, {})
     if slot.get("forge") == "forgejo":
         return "forgejo"
-    if slot.get("repo") and (slot.get("borrows") or slot.get("slice")):
+    if slot.get("repo") and slot.get("slice"):
         return "repo"
     kind = pool_of(job_labels)
     if kind != "other":
@@ -1132,7 +1130,7 @@ def render():
     ] + slot_rows + forgejo("github_runner_pool_slot")
 
     L += [
-        "# HELP github_runner_withheld A runner apps/ci-runner-governor holds back from new jobs: a Unity slot, or a repo runner with no slot lent to it",
+        "# HELP github_runner_withheld A runner apps/ci-runner-governor holds back from new jobs: a Unity slot",
         "# TYPE github_runner_withheld gauge",
     ]
     for scope, r in sorted(seen.values(), key=lambda s: s[1]["name"]):

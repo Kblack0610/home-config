@@ -68,7 +68,7 @@ Rollback: stop Forgejo, put the copied db back, start it. The host's login shell
 
 ## Runner
 
-Forgejo jobs run on the hosts' Unity test slots, not in the cluster, and no slot is Forgejo's alone. Each lendable Unity slot of a host whose `ci_caps` carry `forgejo` (today ms-a2, tuf-b550, deskslim-2 and deskslim-1) has a Forgejo seat, `<host>-unity-pool-<n>-forgejo`, or several (`-forgejo-2` and on, one per 2 CPUs of the slot), placed by `scripts/render-ci-topology.py` (topology `borrows`). A seat is a `forgejo-seat` supervisor (`ansible/roles/forgejo-runner-linux`, "CI runners" play) that runs `forgejo-runner one-job` only while ci-runner-governor lends it the slot (`apps/ci-runner-governor`, "Lending"): the governor withholds the slot's GitHub runner, waits for it to go idle, and only then flips the seat's lease to forgejo; it flips back once the Forgejo jobs end and every seat on the slot has acknowledged. The seat runs as `linux-ci` in the borrowed slot's slice, and its job containers start with `--cgroup-parent=<that slice>`, so a Forgejo job uses that slot's cores and memory cap. The governor lends a slot to whichever forge has waited longest. A Forgejo job waits about 2 to 3 minutes for a lend (the exporter's lag plus a lend cycle and a grant cycle).
+Forgejo jobs run on the hosts' small-job slice, not in the cluster and not on a Unity slot. Each host whose `ci_caps` carry `forgejo` (today ms-a2, tuf-b550, deskslim-2 and deskslim-1) has standing Forgejo seats, `<host>-small-forgejo-<n>`, placed by `scripts/render-ci-topology.py` (topology `slice`). A seat is a `forgejo-seat` supervisor (`ansible/roles/forgejo-runner-linux`, "CI runners" play) that runs `forgejo-runner one-job` only while ci-runner-governor's lease for it says forgejo (`apps/ci-runner-governor`); the lease is always forgejo for a standing seat, so a governor that is down stops Forgejo CI and leaves GitHub CI running. The seat runs as `linux-ci` in `ci-small.slice`, and its job containers start with `--cgroup-parent=<that slice>`, so a Forgejo job uses the slice's cores and memory cap. A Forgejo job starts at once: no lend cycle waits in front of it. The earlier per-slot seats (`<host>-unity-pool-<n>-forgejo`) were removed in hc-825; `retire.yml` takes their units off on the next apply.
 
 If the governor is down, every seat holds github and Forgejo CI stops (fail closed, so it never shares a slot with a GitHub job). GitHub CI goes on. A home-config PR's own checks run on these seats, so a governor fix lands by break-glass: merge it as admin without waiting for checks, and Flux applies it from git.
 
@@ -89,7 +89,7 @@ ssh forge-hel1 docker compose -f /etc/forgejo/compose.yaml exec -u git forgejo \
   forgejo actions generate-runner-token
 ```
 
-Check a seat: `systemctl status forgejo-runner-<host>-unity-pool-<n>-forgejo` and `journalctl -u forgejo-runner-<host>-unity-pool-<n>-forgejo` on the host (it logs each lease change), and `ci_governor_lent` for which slots are lent. The exporter reads each seat's state from the admin runners API, so a seat that never registered shows as missing on the CI dashboard.
+Check a seat: `systemctl status forgejo-runner-<host>-small-forgejo-<n>` and `journalctl -u forgejo-runner-<host>-small-forgejo-<n>` on the host (it logs each lease change). The exporter reads each seat's state from the admin runners API, so a seat that never registered shows as missing on the CI dashboard.
 
 To use Actions in a repo, add `.forgejo/workflows/<name>.yaml`, same syntax as GitHub Actions.
 

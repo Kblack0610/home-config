@@ -2,7 +2,8 @@
 # Takes off the Forgejo units and dirs this host no longer runs: forgejo_seat_names is every
 # seat it keeps (empty on a host with none). Before 2026-11-18 a host ran forgejo_slots
 # daemons of its own, forgejo-runner-<host>-forgejo-<n> in /var/lib/linux-ci/forgejo-<n>; a
-# seat's dir is named for the slot it borrows, so those dirs are never a seat's.
+# seat's dir is named for its seat, so those dirs are never a seat's. A lend seat of the old
+# per-slot lending (removed in hc-825) is retired here too: it is not in forgejo_seat_names.
 # Their Forgejo registrations stay listed until removed in Site Administration, Actions, Runners.
 - name: Find the Forgejo units and the old slot dirs
   ansible.builtin.find:

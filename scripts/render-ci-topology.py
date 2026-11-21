@@ -12,7 +12,7 @@ when unity_ci_lan is false, else local), full (unity_ci_full, Unity hosts only),
 host the governor powers (ci_power plus its ansible_host as instance_id) and its slots. Per slot: the runner name the play registers, its caps (the job
 kinds it takes: light, heavy, unity, unity-build, unity-wide, forgejo, macos, windows; HOST_CAPS says
 which of the host's ci_caps each slot gets), the repo of a repo-scoped runner, the forge of a
-seat that serves Forgejo (github otherwise), the Unity slot a seat borrows ("borrows"), and for a
+seat that serves Forgejo (github otherwise), and for a
 lead slot the test slots in its group. A host's lead slots are the keys of its unity_ci_slot_groups,
 each with the test slots that share its cores (the governor never runs a lead beside them), [] for a
 lead with cores of its own. A lead is a build slot (unity-build) unless unity_ci_wide_slots names it:
@@ -28,27 +28,15 @@ Rendering also checks what the inventory must hold for the slots to fit their ho
   it off at least one, so a release always has a slot and never holds every slot players.yml builds
   on (hc-263). A lone build slot carries it and players.yml shares it.
 - A core host or a host in no_ci_hosts carries no CI.
-- A seat borrows one Unity test slot of its own LAN host, outside every slot group: the governor
-  lends that slot to a Forgejo seat (one on each such slot of a host tagged forgejo) or to a
-  repo runner seat (ci_repo_runners "borrows") while no GitHub job holds it, so no seat has cores of its own.
-  A ci_repo_runners entry {repo, name, borrows} registers the same count of seats (fewer if it sets seats) against its repo
-  (<host>-<name>-1 and on, caps light), each with the slot's size, so a lend packs its jobs too.
-  Each such slot registers floor(its CPUs / MIN_JOB_CORES) Forgejo seats (<slot>-forgejo, then
-  <slot>-forgejo-2 and on), each entry carrying the slot's "cpus" and "memory_gb"; the governor lends
-  one slot to as many of them as their measured weights fit (apps/ci-runner-governor, pack()).
-  A host's ci_seat_kinds (light, heavy; each also in its ci_caps) puts the same seats of that GitHub
-  kind on each such slot (<slot>-light-1 and on): org runners a lend serves, so small GitHub jobs pack
-  onto one slot too, and every Unity slot of that host drops the kind from its caps, so a seat is the
-  one path a small job has there. A host without it runs those jobs on whole slots.
-- A host's ci_seat_kinds needs a lendable slot, or the kinds would have no runner on it.
 - A LAN Unity host's ci_small_slice ({cpus, memory}) is its standing small-job slice: the runners
   of every small kind it serves (light and heavy in its ci_caps, forgejo where tagged, one set per
-  ci_repo_runners repo), always admitted and never lent, in a slice of their own (roles/ci-host-budget)
+  ci_repo_runners repo), always admitted, in a slice of their own (roles/ci-host-budget)
   of that many CPUs and that memory. Each kind registers as many seats (<host>-small-<kind>-1 and on,
   a repo's <host>-small-<name>-1) as fit the slice at that kind's measured p90 job size
   (all.vars ci_small_job_size, from scripts/ci-kind-weights.py), at least one; a repo's share is
   its kind's count over the host's repos, capped by its "seats". Each entry carries "slice": "small"
-  and the slice's "cpus" and "memory_gb", its kind's p90 "job_cpus", and no "borrows".
+  and the slice's "cpus" and "memory_gb", and its kind's p90 "job_cpus". A host with a slice takes no
+  small kind on a whole Unity slot: the seats are the one path a small job has there.
 - A LAN Unity host's ci_local_seats (a count) is its "local_seats": the local test runs the governor
   leases at once on that host (apps/ci-runner-governor, "Local seats"). They have no runner and no
   forge, so they are a host count, never slots, which every slot reader takes for a runner.
@@ -83,24 +71,19 @@ UNITY_GROUPS = ("unity_ci_runners", "unity_ci_mac_runners")
 # The inventory keys this reads; a Jinja value in one would render as its literal text.
 KEYS = ("ci_repo_runners", "ci_pinned_runners", "unity_ci_slots",
         "unity_ci_slot_groups", "unity_ci_wide_slots", "unity_ci_lan", "unity_ci_full", "unity_ci_wide",
-        "unity_ci_slot_labels", "ci_unity_slot_cpus", "ci_unity_slot_memory_max", "ci_caps", "ci_seat_kinds",
+        "unity_ci_slot_labels", "ci_unity_slot_cpus", "ci_unity_slot_memory_max", "ci_caps",
         "ci_power", "ci_labels", "ci_local_seats", "ci_small_slice", "ci_small_job_size")
 # The keys of ci_labels, each the label the governor sets or reads for that role.
-LABEL_ROLES = ("pool", "full", "build", "wide", "withheld", "build_withheld", "seat_withheld", "lent")
+LABEL_ROLES = ("pool", "full", "build", "wide", "withheld", "build_withheld")
 # The roles whose label is also a topology cap name, which the governor matches against slot caps.
 CAP_ROLES = {"pool": "unity", "build": "unity-build", "wide": "unity-wide"}
 INSTANCE_ID = re.compile(r"i-[0-9a-f]{8,17}")
-# A slot registers one Forgejo seat per MIN_JOB_CORES of its CPUs, the most small jobs it could hold at once.
-# Provisional, medium confidence: a Forgejo job's p90 was 1.4-2.9 cores, median seat 1.7 (ci_runner_cores_busy,
-# 2026-11-11..18), so a slot of 6 cores registers 3 seats; the measured weight, not this, holds any of them
-# back. Revisit when a small kind's p90 measures under 2 cores (scripts/ci-kind-weights.py).
-MIN_JOB_CORES = 2
 # What a host may be tagged for (ci_caps): each of its slots takes every job kind its host is
 # tagged for that the slot can hold. A Unity test slot takes unity and SHARED_CAPS; a build slot
 # takes builds alone, so a build never waits behind a small job; a wide slot takes unity-wide alone.
 # No slot is a small kind's alone:
 # a Unity repo's light job parks the warm tree's untracked state first (roles/ci-host,
-# ci-fresh-workspace). A seat runs on a Unity test slot the governor lends it (seats()).
+# ci-fresh-workspace). A small kind runs on the standing seats of the host's ci_small_slice.
 HOST_CAPS = ("light", "heavy", "unity", "unity-build", "unity-wide", "forgejo")
 # Heavy needs /dev/kvm: platform's Mobile Smoke Android runs the emulator with hardware acceleration
 # and times out under -accel off. Tag a host heavy only when it has /dev/kvm (ms-a2, the deskslims and tuf-b550 do;
@@ -110,7 +93,7 @@ HOST_CAPS = ("light", "heavy", "unity", "unity-build", "unity-wide", "forgejo")
 # jobs on one host no longer clash. Revisit if a heavy job fails on an address already in use.
 SHARED_CAPS = ("light", "heavy")
 # The keys every ci_repo_runners entry carries; an optional "seats" caps its seat count.
-REPO_KEYS = ("repo", "name", "borrows")
+REPO_KEYS = ("repo", "name")
 # The kinds a standing slice serves (ci_small_slice), each sized by all.vars ci_small_job_size.
 SMALL_KINDS = ("light", "heavy", "forgejo", "repo")
 
@@ -139,7 +122,7 @@ def render(hosts, groups):
         fails += [f"{host}: ci_caps names {c}, not one of {list(HOST_CAPS)}" for c in caps if c not in HOST_CAPS]
         if v.get("unity_ci_lan", True) is False and set(caps) & {*SHARED_CAPS, "forgejo"}:
             fails.append(f"{host}: a cloud host's ci_caps carry no light, heavy or forgejo, so a small job never powers a paid host")
-        fails += [f"{host}: ci_repo_runners {r.get('name', r)} has no {k}" + (" (the Unity slot it runs on)" if k == "borrows" else "")
+        fails += [f"{host}: ci_repo_runners {r.get('name', r)} has no {k}"
                   for r in v.get("ci_repo_runners", []) for k in REPO_KEYS if k not in r]
         unity = any(host in groups.get(g, ()) for g in UNITY_GROUPS)
         local = v.get("ci_local_seats")
@@ -160,8 +143,8 @@ def render(hosts, groups):
                     elif t in seen:
                         fails.append(f"{host}: test slot {t} is in two groups")
                     seen.add(t)
-            # A kind the host's seats serve runs on a seat only, never on a whole slot.
-            seated = set(v.get("ci_seat_kinds") or [])
+            # A host with a standing slice serves its small kinds on seats only, never on a whole slot.
+            seated = set(SHARED_CAPS) if v.get("ci_small_slice") else set()
             for n in range(1, total + 1):
                 slot = {"name": unity_slot(host, n),
                         "caps": [("unity-wide" if n in wide_slots(v) else "unity-build")] if n in group
@@ -169,12 +152,11 @@ def render(hosts, groups):
                 if group.get(n):
                     slot["group"] = [unity_slot(host, t) for t in group[n]]
                 slots.append(slot)
-            slots += seats(host, v, caps, total, group, fails)
             slots += small_slice(host, v, caps, fails)
         elif v.get("ci_small_slice"):
             fails.append(f"{host}: ci_small_slice on a host with no Unity slot")
-        elif any("borrows" in r for r in v.get("ci_repo_runners", [])):
-            fails.append(f"{host}: a repo runner borrows a Unity slot, but the host has none")
+        elif v.get("ci_repo_runners"):
+            fails.append(f"{host}: ci_repo_runners on a host with no Unity slot")
         slots += [{"name": p["name"], "caps": [p["cap"]], **({"repo": p["repo"]} if p.get("repo") else {})}
                   for p in v.get("ci_pinned_runners", [])]
         kinds = {c for s in slots for c in s["caps"] if c in HOST_CAPS}
@@ -220,62 +202,14 @@ def label_failures(labels):
     return fails
 
 
-def seats(host, v, caps, total, group, fails):
-    """The seats of a LAN host's lendable slots: Forgejo seats where it is tagged forgejo, the
-    ci_seat_kinds seats, and its ci_repo_runners seats, plus the failures of the repo runners'
-    "borrows". A lendable slot is a test slot in no slot group: a grouped one already lends its
-    cores to its build slot, and a slot has one lender at a time."""
-    grouped = set(group) | {t for ts in group.values() for t in ts}
-    lendable = [unity_slot(host, n) for n in range(1, total + 1) if n not in grouped]
-    lan = v.get("unity_ci_lan", True) is not False
-    repos = [{**r, "borrows": unity_slot(host, r["borrows"])} for r in v.get("ci_repo_runners", [])
-             if all(k in r for k in REPO_KEYS)]
-    fails += [f"{host}: {host}-{r['name']} borrows {r['borrows']}, not one of its lendable LAN slots {lendable}"
-              for r in repos if not (lan and r["borrows"] in lendable)]
-    fails += [f"{host}: {host}-{r['name']} seats {r['seats']!r} is not a whole number of at least 1"
-              for r in repos if "seats" in r and not (type(r["seats"]) is int and r["seats"] >= 1)]
-    kinds = list(v.get("ci_seat_kinds") or [])
-    fails += [f"{host}: ci_seat_kinds names {k}, not one of {list(SHARED_CAPS)} in its ci_caps"
-              for k in kinds if k not in SHARED_CAPS or k not in caps]
-    if kinds and not lan:
-        fails.append(f"{host}: ci_seat_kinds on a cloud host, so a small job would power a paid host")
-    if not lan:
-        return []
-    if kinds and not lendable:
-        fails.append(f"{host}: ci_seat_kinds with no lendable slot (each is in a slot group), so {kinds} would have no runner")
-    cpus, mem = slot_budget(v, total)
-
-    def size(n):
-        """The slot's CPUs and memory in G where the inventory gives them: what the governor divides a kind's measured share by."""
-        i = int(n.rsplit("-", 1)[1]) - 1
-        return {**({"cpus": len(cpus[i])} if i < len(cpus) else {}),
-                **({"memory_gb": mem[i]} if i < len(mem) and mem[i] else {})}
-
-    def count(n):
-        """The seats a slot registers: one per MIN_JOB_CORES of it, one where the inventory gives no cores.
-        The governor's weights decide how many of them run at once."""
-        return max(1, int(size(n).get("cpus", 0) // MIN_JOB_CORES))
-
-    def repo_count(r):
-        """A repo's seats: its slot's count, lowered by "seats" for a repo heavier than the shared repo weight."""
-        return min(count(r["borrows"]), r["seats"]) if type(r.get("seats")) is int else count(r["borrows"])
-
-    forgejo = [{"name": f"{n}-forgejo" + (f"-{i}" if i > 1 else ""), "caps": ["forgejo"], "forge": "forgejo",
-                "borrows": n, **size(n)} for n in lendable if "forgejo" in caps for i in range(1, count(n) + 1)]
-    kind = [{"name": f"{n}-{k}-{i}", "caps": [k], "borrows": n, **size(n)}
-            for k in kinds if k in SHARED_CAPS and k in caps for n in lendable for i in range(1, count(n) + 1)]
-    # A personal repo cannot see org runners, so its seats register against the repo and carry light.
-    repo = [{"name": f"{host}-{r['name']}-{i}", "caps": ["light"], "repo": r["repo"], "borrows": r["borrows"],
-             **size(r["borrows"])} for r in repos if r["borrows"] in lendable for i in range(1, repo_count(r) + 1)]
-    return forgejo + kind + repo
-
-
 def small_slice(host, v, caps, fails):
     """The standing seats of a LAN host's ci_small_slice: per kind as many as fit the slice at the
     kind's p90 job size (all.vars ci_small_job_size), at least one. Every kind may fill
     the slice on its own: the slice's CPU quota and memory cap are what bound them together."""
     sl = v.get("ci_small_slice")
     if not sl:
+        if v.get("ci_repo_runners"):
+            fails.append(f"{host}: ci_repo_runners needs a ci_small_slice, the only place a repo runner runs")
         return []
     cpus, mem = sl.get("cpus") if isinstance(sl, dict) else None, gigabytes(sl.get("memory")) if isinstance(sl, dict) else None
     if not (type(cpus) is int and cpus >= 1 and mem and set(sl) == {"cpus", "memory"}):
@@ -289,6 +223,8 @@ def small_slice(host, v, caps, fails):
         fails.append(f"{host}: ci_small_slice takes {cpus} CPUs, more than its ci_cpus has ({budget})")
     job_size = v.get("ci_small_job_size") or {}
     repos = [r for r in v.get("ci_repo_runners", []) if all(k in r for k in REPO_KEYS)]
+    fails += [f"{host}: {host}-{r['name']} seats {r['seats']!r} is not a whole number of at least 1"
+              for r in repos if "seats" in r and not (type(r["seats"]) is int and r["seats"] >= 1)]
     kinds = [k for k in SMALL_KINDS if (k in caps if k != "repo" else repos)]
 
     def fit(kind):

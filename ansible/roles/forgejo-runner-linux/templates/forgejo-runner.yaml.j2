@@ -19,7 +19,7 @@ container:
   privileged: false
   # The host's docker socket inside each job container (docker build and push jobs).
   docker_host: automount
-  # Job containers run in the borrowed slot's slice, inside its CPU set and memory cap.
+  # Job containers run in the small-job slice, inside its CPU set and memory cap.
   options: --cgroup-parent={{ forgejo_runner_slice }}
   valid_volumes: []
 host:

@@ -10,9 +10,6 @@ GitHub matches labels when it assigns a job, so nothing is killed or restarted.
 
 Once per CYCLE_SECONDS it reads Prometheus (each host's CPU idle and pressure, temperature,
 free memory and disk; github-runner-exporter's runner states and waiting jobs) and, in order:
-  lend     lend_plan() and lend_apply(): lend idle LAN slots to Forgejo, repo and light or heavy seats, and
-           take them back; a standing seat, in its host's small-job slice, is always admitted and never
-           lent (STANDING SLICE)
   decide   decide(): each LAN host's verdict (FULL, HOT, ROOM, STEADY) or pin moves one slot,
            a paired host steps test slots aside for a waiting build or wide job, then each
            standby (cloud) host admits, withholds, packs, starts or stops
@@ -98,9 +95,6 @@ AWS_STOP_PREFIX = "Server."
 FALLBACK_REASONS = ("capacity", "refused", "reclaim")
 # The budget's numbers move a few times a day and the API has no event, so one read an hour.
 BUDGET_POLL_SECONDS = 3600
-# jump_lends' bound when config.json leaves jump_max_seconds out: a GitHub job past this wait takes
-# a jump lend back like any other, so a light stream holds a Unity job up 15 minutes at most.
-JUMP_MAX_SECONDS = 900
 OVERRIDE_DIR = os.environ.get("GOVERNOR_OVERRIDE_DIR", "/override")
 # The override ConfigMap's contract, beside this file in git and in the pod's /app.
 with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "override.schema.json")) as _f:
@@ -142,8 +136,7 @@ def load_config(path, topology_path=None):
       admit gives back with the rest
     - "moved": every label a swap moves on a Unity slot (stale()): each cap a Unity slot of the
       topology takes, each small kind a seat serves (so a slot sheds one its seats took over),
-      and the pool, full, build, wide and withheld labels, but not the lend mark.
-    - "kinds": every kind of job a slot may run: each seat's weight kind, each cap of the topology"""
+      and the pool, full, build, wide and withheld labels"""
     with open(path) as f:
         cfg = json.load(f)
     with open(topology_path or TOPOLOGY) as f:
@@ -197,21 +190,12 @@ def load_config(path, topology_path=None):
         raise ValueError(f"hosts entries for no LAN Unity host: {', '.join(sorted(stray))}")
     cfg["hosts"] = {h: {**cfg["hosts"].get(h, {}), "full": bool(topo[h].get("full", True)), **build_slots(h)}
                     for h in local}
-    # A seat borrows one LAN Unity slot and runs only while the governor lends it (LENDING).
-    cfg["seats"] = {s["name"]: {"host": h, "slot": s["borrows"], "forge": s.get("forge", "github"),
-                                "repo": s.get("repo"), "caps": s["caps"],
-                                "cpus": s.get("cpus"), "memory_gb": s.get("memory_gb")}
-                    for h, e in topo.items() for s in e["slots"] if s.get("borrows")}
     # A standing seat runs in its host's small-job slice (inventory ci_small_slice), always admitted:
-    # nothing here lends, returns or withholds it (STANDING SLICE).
+    # nothing here returns or withholds it (STANDING SLICE).
     # A standing seat's "share": its kind's p90 job over its slice's CPUs, the part of the slice one job takes.
     cfg["standing"] = {s["name"]: {"host": h, "forge": s.get("forge", "github"), "repo": s.get("repo"), "caps": s["caps"],
                                    "share": min(1.0, s.get("job_cpus", s.get("cpus", 1)) / max(1, s.get("cpus", 1)))}
                        for h, e in topo.items() for s in e["slots"] if s.get("slice")}
-    # Every kind of job a slot may run, for ci_governor_kind_weight: a seat kind weighs what it
-    # measures, the rest take a whole slot (render()).
-    cfg["kinds"] = sorted({weight_kind(cfg, n) for n in cfg["seats"]}
-                          | {c for e in topo.values() for s in e["slots"] for c in s["caps"]})
     cfg["moved"] = sorted({c for slots in unity.values() for s in slots for c in s["caps"]} | small_kinds(cfg)
                           | {cfg[f"{r}_label"] for r in ("pool", "full", "build", "wide", "withheld", "build_withheld")})
     # A LAN Unity host's local test runs, leased one seat each (LocalSeats).
@@ -221,10 +205,6 @@ def load_config(path, topology_path=None):
         raise ValueError(f"local seats on no LAN Unity host: {', '.join(stray)}")
     # A whole-slot host: runners and no governed slot (mac-mini), one unit each (machine_units()).
     cfg["machines"] = {h: sorted(s["name"] for s in e["slots"]) for h, e in topo.items() if h not in unity and e["slots"]}
-    slots = {s["name"] for h in local for s in unity[h]}
-    stray = sorted(n for n, s in cfg["seats"].items() if s["slot"] not in slots)
-    if stray:
-        raise ValueError(f"seats that borrow no LAN Unity slot: {', '.join(stray)}")
     stray = sorted(n for n, s in cfg["standing"].items() if s["host"] not in local)
     if stray:
         raise ValueError(f"standing seats on no LAN Unity host: {', '.join(stray)}")
@@ -281,25 +261,6 @@ def prom(query):
     if body.get("status") != "success":
         raise ValueError(f"prometheus: {body.get('error', 'query failed')}")
     return body["data"]["result"]
-
-
-def prom_range(query, start, end, step):
-    """Every sample of query's series from start to end at step: query_range's result."""
-    url = f"{PROM}/api/v1/query_range?" + urllib.parse.urlencode(
-        {"query": query, "start": start, "end": end, "step": step})
-    with urllib.request.urlopen(url, timeout=30) as r:
-        body = json.load(r)
-    if body.get("status") != "success":
-        raise ValueError(f"prometheus: {body.get('error', 'query failed')}")
-    return body["data"]["result"]
-
-
-def percentile(xs, p):
-    """The p quantile of xs, linear between ranks, as scripts/ci-pool-idle.py pct() reads it."""
-    xs = sorted(xs)
-    k = (len(xs) - 1) * p
-    lo = int(k)
-    return xs[lo] + (xs[min(lo + 1, len(xs) - 1)] - xs[lo]) * (k - lo)
 
 
 def by_host(result):
@@ -427,7 +388,7 @@ def observe_shared(cfg):
     caps = sorted({c for shared in cfg["shared"].values() for c in shared})
     if not caps:
         return []
-    # A personal repo's job waits for its own seat, which a lend serves, not an admit.
+    # A personal repo's job waits for its own seat, which a standing seat serves, not an admit.
     repos = seat_repos(cfg)
     return [label_set(r["metric"].get("labels", ""))
             for r in prom(f'github_actions_job_waiting{{pool=~"{"|".join(caps)}",stuck!="true"}}')
@@ -1135,21 +1096,15 @@ def apply(cfg, action, name, host):
     relabel(f"orgs/{org}", rid, have, add, stale(cfg, have, add))
 
 
-# LENDING (the module docstring says why). A seat borrows one Unity slot (topology "borrows")
-# and runs only while that slot is lent to it.
-#
 # STANDING SLICE. A standing seat (topology "slice": "small", inventory ci_small_slice) runs in its
-# host's ci-small.slice and is always admitted, so a small job never waits on a lend and a lend
-# is not taken back between two waves of a fan-in (hc-824). The governor never lends, returns or
-# withholds one; it only reads it: an idle standing seat of a kind answers one waiting job of that
-# kind before a lend does (lend_plan()), and each host's slice is one capacity unit (slice_units()).
+# host's ci-small.slice and is always admitted, so a small job never waits on a lend (hc-824) and the
+# governor has none to make (hc-825). It never returns or withholds one; it only reads it, and each
+# host's slice is one capacity unit (slice_units()).
 # A standing Forgejo seat's lease is forgejo for good, on the pseudo-slot standing_slot().
 
 # The longest a /lease long-poll is held: a supervisor asks again after it.
 LEASE_WAIT_MAX = 300
-# A granted Forgejo lend whose supervisor has not asked for its lease this long, and whose
-# seat is not busy, goes back, and a returning one is unlent without its ack: a dead
-# supervisor must not keep a slot from GitHub.
+# How long a local run that holds a seat may go unasked before the seat is taken as lost (LocalSeats).
 LEASE_STALE_SECONDS = 600
 LEASES = ("github", "forgejo")
 
@@ -1167,21 +1122,13 @@ def standing_leases(cfg, leases):
 
 
 class Leases:
-    """Each slot's Forgejo lease: "github" (the default, so a restart starts there) or
-    "forgejo", one for every Forgejo seat that borrows the slot (up to limit()). Each seat's
-    supervisor long-polls wait() by its seat name; set() wakes them all."""
+    """Each standing Forgejo seat's lease: forgejo for good (standing_leases()). Each seat's
+    supervisor long-polls wait() by its seat name."""
 
-    def __init__(self, seats):
-        """seats: {seat: the slot it borrows}."""
+    def __init__(self):
         self.cond = Condition()
-        self.slot_of = dict(seats)
-        self.lease = dict.fromkeys(seats.values(), "github")
-        # The lease each supervisor last said it holds since the lease last changed; None
-        # until it says. "github" means no Forgejo job of its runs.
-        self.ack = dict.fromkeys(seats)
-        # When each supervisor last asked.
-        self.seen = dict.fromkeys(seats, 0.0)
-        self.cap = {}
+        self.slot_of = {}
+        self.lease = {}
         # The Forgejo task each seat said it runs (forgejo-seat.py, from its runner's log), for
         # /tasks: the Forgejo API names no runner on a task (hc-571).
         self.task = {}
@@ -1190,43 +1137,10 @@ class Leases:
         """A seat on a slot of its own lease, before the server starts (standing_leases())."""
         self.slot_of[seat] = slot
         self.lease[slot] = lease
-        self.ack[seat], self.seen[seat] = None, 0.0
-
-    def seats(self, slot):
-        return sorted(s for s, n in self.slot_of.items() if n == slot)
-
-    def set(self, slot, lease):
-        with self.cond:
-            if self.lease[slot] != lease:
-                self.lease[slot] = lease
-                self.ack.update(dict.fromkeys(self.seats(slot)))
-                self.cond.notify_all()
-
-    def get(self, slot):
-        """(lease, the ack every seat of the slot gave or None, when a seat of it last asked)."""
-        with self.cond:
-            acks = {self.ack[s] for s in self.seats(slot)}
-            return self.lease[slot], (acks.pop() if len(acks) == 1 else None), \
-                max((self.seen[s] for s in self.seats(slot)), default=0.0)
-
-    def limit(self, slots):
-        """slots: {slot: how many of its seats may run Forgejo jobs} (pack()): the first that many
-        by name hold the slot's lease, the rest read github, so weights cap the jobs a lent slot
-        runs, not only how many lends are asked for. A slot not named is not capped."""
-        with self.cond:
-            if slots != self.cap:
-                self.cap = dict(slots)
-                self.cond.notify_all()
 
     def of(self, seat):
-        """The lease a seat is handed: its slot's, or github past the slot's limit()."""
-        slot = self.slot_of[seat]
-        return self.lease[slot] if self.seats(slot).index(seat) < self.cap.get(slot, len(self.slot_of)) else "github"
-
-    def of_seat(self, seat):
-        """(lease, ack, seen) of one seat."""
-        with self.cond:
-            return self.of(seat), self.ack[seat], self.seen[seat]
+        """The lease a seat is handed: its slot's."""
+        return self.lease[self.slot_of[seat]]
 
     def tasks(self):
         """{seat: the Forgejo task id it runs}."""
@@ -1235,22 +1149,15 @@ class Leases:
 
     def wait(self, seat, have, timeout, task=None):
         """The seat's lease as soon as it differs from have, else have after timeout. A
-        supervisor asks with the lease it holds and acts on what it gets back, so asking
-        with the current lease acknowledges it. task is the Forgejo task it runs: an ask
-        holding forgejo records it, and any ask without one clears it, as the next ask comes
-        once that job ends."""
+        supervisor asks with the lease it holds and acts on what it gets back. task is the
+        Forgejo task it runs: an ask holding forgejo records it, and any ask without one clears
+        it, as the next ask comes once that job ends."""
         with self.cond:
             if have == "forgejo" and task:
                 self.task[seat] = task
             else:
                 self.task.pop(seat, None)
-            self.seen[seat] = time.time()
-            if self.of(seat) == have:
-                self.ack[seat] = have
             self.cond.wait_for(lambda: self.of(seat) != have, timeout)
-            if self.of(seat) == have:
-                self.ack[seat] = have
-            self.seen[seat] = time.time()
             return self.of(seat)
 
 
@@ -1394,9 +1301,8 @@ def observe_seats(cfg):
     """({seat: {busy, online, withheld}}, [(kind, labels, age)]) from github-runner-exporter.
     A seat with no runner registered has no entry. kind is "forgejo", a personal repo (its
     seats' repo), "light" or "heavy" (a job on a cap some seat of it serves), or "github": any
-    other job waiting on a cap a Unity slot takes, or naming no kind (pool="other"; slot_takes
-    decides which slot it could take). The standing seats are read too (STANDING SLICE)."""
-    seats = all_seats(cfg)
+    other job waiting on a cap a Unity slot takes, or naming no kind (pool="other"). The standing seats are read too (STANDING SLICE)."""
+    seats = cfg["standing"]
     if not seats:
         return {}, []
     names = "|".join(sorted(seats))
@@ -1422,76 +1328,21 @@ def observe_seats(cfg):
     return state, waits
 
 
-def all_seats(cfg):
-    """{seat: entry} of every seat, lend (cfg["seats"]) and standing (cfg["standing"])."""
-    return {**cfg["seats"], **cfg["standing"]}
-
-
 def seat_repos(cfg):
     """{short name: owner/repo} of the personal repos whose runners are seats. The exporter
     labels a wait with the short name only."""
-    return {s["repo"].split("/", 1)[1]: s["repo"] for s in all_seats(cfg).values() if s.get("repo")}
+    return {s["repo"].split("/", 1)[1]: s["repo"] for s in cfg["standing"].values() if s.get("repo")}
 
 
 def small_kinds(cfg):
-    """The GitHub kinds (light, heavy) some seat serves: org runners that borrow a slot or stand
-    in a small-job slice, as a Forgejo seat does (ci_seat_kinds in the inventory)."""
-    return {s["caps"][0] for s in all_seats(cfg).values() if s["forge"] != "forgejo" and not s.get("repo")}
+    """The GitHub kinds (light, heavy) some standing seat serves (inventory ci_small_slice)."""
+    return {s["caps"][0] for s in cfg["standing"].values() if s["forge"] != "forgejo" and not s.get("repo")}
 
 
 def seat_kind(cfg, seat):
-    """What a seat, lend or standing, serves: "forgejo", a personal repo, or the small kind (light, heavy) of an org seat."""
-    s = all_seats(cfg)[seat]
+    """What a standing seat serves: "forgejo", a personal repo, or the small kind (light, heavy) of an org seat."""
+    s = cfg["standing"][seat]
     return "forgejo" if s["forge"] == "forgejo" else s.get("repo") or s["caps"][0]
-
-
-def weight_kind(cfg, seat):
-    """The kind a seat's weight is measured under: ci_runner_job's "forgejo", "repo", "light" or "heavy"."""
-    s = all_seats(cfg)[seat]
-    return "forgejo" if s["forge"] == "forgejo" else "repo" if s.get("repo") else s["caps"][0]
-
-
-WEIGHTS = {"at": None, "by_kind": {}}
-
-
-def kind_weights(cfg, now):
-    """{kind: weight}: each kind's measured share of the slot its seats borrow (hc-666), the larger
-    of its p90 cores over the slot's CPUs and its p90 memory over the slot's MemoryMax, clamped to
-    [floor, 1]. From the cc:job_kind_* rules (command-center), refreshed every refresh_seconds. A
-    sample is one busy runner at one step_seconds step over window_seconds, and the p90 is over every
-    sample of the kind pooled: the p90 job's use, not the busiest runner's (hc-823), the same samples
-    scripts/ci-kind-weights.py tabulates. The smallest slot of the kind's seats sizes it, so a wrong
-    weight errs toward fewer seats. A kind with fewer than min_samples samples, or no slot size,
-    has none: pack() reads weight 1, one job per slot. A failed refresh keeps the last."""
-    w = cfg["weights"]
-    if WEIGHTS["at"] is not None and now - WEIGHTS["at"] < w["refresh_seconds"]:
-        return WEIGHTS["by_kind"]
-    out = {}
-    try:
-        for series, size in (("cores", "cpus"), ("mem", "memory_gb")):
-            pooled = {}
-            for r in prom_range(f"max by (runner, kind) (cc:job_kind_{series})",
-                                now - w["window_seconds"], now, w["step_seconds"]):
-                pooled.setdefault(r["metric"].get("kind"), []).extend(float(v) for _, v in r["values"])
-            for kind, xs in pooled.items():
-                sizes = [s[size] for n, s in cfg["seats"].items() if weight_kind(cfg, n) == kind and s.get(size)]
-                if sizes and len(xs) >= w["min_samples"]:
-                    cap = min(sizes) * (2 ** 30 if size == "memory_gb" else 1)
-                    out[kind] = max(out.get(kind, 0), percentile(xs, w["percentile"]) / cap)
-    except API_ERRORS as e:
-        print(f"weights not refreshed, keeping {WEIGHTS['by_kind']}: {e}", flush=True)
-        return WEIGHTS["by_kind"]
-    WEIGHTS.update(at=now, by_kind={k: round(min(max(v, w["floor"]), 1.0), 3) for k, v in sorted(out.items())})
-    print(f"seat weights {WEIGHTS['by_kind']}", flush=True)
-    return WEIGHTS["by_kind"]
-
-
-def pack(cfg, weights, slot, seat):
-    """How many seats of seat's kind on slot one lend serves: as many as fit while their weights
-    sum to at most 1, at least one, at most those registered. weights is kind_weights()."""
-    mine = [n for n, s in cfg["seats"].items() if s["slot"] == slot and seat_kind(cfg, n) == seat_kind(cfg, seat)]
-    w = (weights or {}).get(weight_kind(cfg, seat), 1.0)
-    return max(1, min(len(mine), int(1 / w + 1e-9)))
 
 
 def job_durations():
@@ -1508,20 +1359,24 @@ def job_durations():
 NO_CAPACITY = ("pin", "disk", "hot")
 
 
-def units(cfg, runners, seat_state, waits, waiting, shared_waiting, weights, withheld, durations):
+def kind_shares(cfg):
+    """{kind: share}: the part of a slice one job of the kind takes (a standing seat's "share"), by the
+    kind ci_runner_job names: forgejo, repo, light, heavy."""
+    return {"repo" if s.get("repo") else seat_kind(cfg, n): s["share"] for n, s in cfg["standing"].items()}
+
+
+def units(cfg, runners, waits, waiting, shared_waiting, withheld, durations):
     """CI in slot units (hc-668): (capacity {host: slots}, busy {host: units}, backlog {kind: units},
     drain seconds or None). A slot is one unit. capacity counts every slot that is busy or not
     withheld as pin, disk or hot: the hold stops new jobs, not the running one, so busy never reads
-    past capacity. A busy slot is 1; a lent one is its busy seats' summed weights, at most 1. backlog
+    past capacity. A busy slot is 1. backlog
     sums each waiting job's weight by kind: a seat kind (forgejo, repo, light, heavy) at its
-    kind_weights() weight, else "slot" at 1, since it takes a whole slot. drain is the backlog's
+    kind_shares() share of its slice, else "slot" at 1, since it takes a whole slot. drain is the backlog's
     work (units times its kind's p50 run time, the pool's when the kind has none) over capacity:
     every running job frees its units within about one run, so busy units count as soon free.
     None when there is backlog and no capacity or no run time to price it."""
     used = {name: 1.0 for name, r in runners.items() if r["busy"]}
-    for seat, s in cfg["seats"].items():
-        if seat_state.get(seat, {}).get("busy") and s["slot"] in runners:
-            used[s["slot"]] = used.get(s["slot"], 0) + (weights or {}).get(weight_kind(cfg, seat), 1.0)
+    shares = kind_shares(cfg)
     capacity = {}
     for name, r in runners.items():
         capacity.setdefault(r["host"], 0)
@@ -1534,7 +1389,7 @@ def units(cfg, runners, seat_state, waits, waiting, shared_waiting, weights, wit
     for kind, _, _ in waits:
         if kind != "github":  # a rival GitHub job is in waiting or shared_waiting
             label = "repo" if "/" in kind else kind
-            backlog[label] = backlog.get(label, 0) + (weights or {}).get(label, 1.0)
+            backlog[label] = backlog.get(label, 0) + shares.get(label, 1.0)
     small = small_kinds(cfg)
     whole = len(waiting) + sum(1 for need in shared_waiting if not need & small)
     if whole:
@@ -1610,29 +1465,6 @@ def slice_units(cfg, seat_state):
     return capacity, {h: min(u, 1.0) for h, u in busy.items() if h in capacity}
 
 
-def idle_standing(cfg, seat_state):
-    """{kind: idle standing seats}: those online and not busy whose slice has room for their job
-    (the busy seats' shares leave the seat's own), counted in name order, each taking its share. A
-    seat on a full slice counts for none; a HOT or pinned host still runs its standing seats,
-    which nothing withholds."""
-    idle, room = {}, {h: 1.0 - u for h, u in slice_units(cfg, seat_state)[1].items()}
-    for seat, s in sorted(cfg["standing"].items()):
-        st = seat_state.get(seat, {})
-        if st.get("online") and not st.get("busy") and room.get(s["host"], 0) >= s["share"] - 1e-9:
-            room[s["host"]] -= s["share"]
-            idle[seat_kind(cfg, seat)] = idle.get(seat_kind(cfg, seat), 0) + 1
-    return idle
-
-
-def uncovered_waits(cfg, seat_state, jobs):
-    """{kind: waiting jobs a lend must serve}: jobs ({kind: [(age, need)]}, GitHub's left out) less
-    one per idle standing seat of the kind (idle_standing()), which takes the next job without a
-    lend (STANDING SLICE). So a wave that fits the slices lends nothing, and a lend left from it
-    goes back."""
-    idle = idle_standing(cfg, seat_state)
-    return {k: max(0, len(v) - idle.get(k, 0)) for k, v in jobs.items() if k != "github"}
-
-
 def every_machine(cfg, in_units, machines, local, slices=({}, {})):
     """units() with the whole-slot hosts (machine_units()), the local seats (local_units()) and the
     standing slices (slice_units()) added, and a row for every host of the topology, 0 when none of
@@ -1648,341 +1480,6 @@ def every_machine(cfg, in_units, machines, local, slices=({}, {})):
     if local[2]:
         backlog = {**backlog, "local": float(local[2])}
     return capacity, busy, backlog, drain
-
-
-def slot_takes(cfg, runner, name, need):
-    """Whether a Unity slot, admitted, could take a job that asks for need."""
-    have = {l for l in runner.get("labels", ()) if not l.endswith("-withheld") and l != cfg["lent_label"]}
-    return need <= have | label_set(",".join(admit_labels(cfg, runner["host"], name)))
-
-
-def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_action, now, weights=None):
-    """This cycle's steps toward lending the Unity slots their seats borrow: [(step, slot,
-    seat, why)], step one of
-      lend      withhold the slot and mark it lent, so it takes no GitHub job from now on
-      grant     once it shows withheld, lent and idle: the seat's lease, or its labels back
-      return    the seat's lease or labels back from it
-      unlend    once every seat of the slot gave it back: drop the mark (the slot stays withheld)
-      readmit   an unlend on a ROOM host under the pool cap: drop the mark and admit the slot
-      withhold  a repo seat admitted with no slot lent to it (slot "")
-    lends: {slot: {"seat": seat, or None for a lend found by its label after a restart,
-    "phase": "held", "granted" or "returning", "at": when}}; pins: read_pins(). It runs before decide(),
-    which leaves a host a lend moved to its cooldown and never sees a lent slot."""
-    seats, mark = cfg["seats"], cfg["lent_label"]
-    if not seats:
-        return []
-    by_slot = {}
-    for seat, s in sorted(seats.items()):
-        by_slot.setdefault(s["slot"], []).append(seat)
-    host_of = {slot: seats[mine[0]]["host"] for slot, mine in by_slot.items()}
-    st = lambda seat: seat_state.get(seat, {})
-    verdicts = {h: v for h, (v, _) in host_verdicts(cfg, hosts).items()}
-
-    def unfit(host):
-        """Why host may not hold a lend, or ""."""
-        if host in (pins or {}):
-            return f"{host} is pinned"
-        return f"{host} is {verdicts[host]}" if verdicts[host] in ("HOT", "FULL") else ""
-
-    def mates(slot, seat):
-        """The seats a lend of slot to seat serves: those of its kind the exporter sees, as many as pack() lets in,
-        so a seat no host has registered yet adds no capacity and holds no return."""
-        return [m for m in by_slot.get(slot, [seat])
-                if m == seat or (m in seat_state and seat_kind(cfg, m) == seat_kind(cfg, seat))
-                ][:pack(cfg, weights, slot, seat)]
-
-    def busy(slot, seat):
-        """How many of the lend's seats run a job."""
-        return sum(1 for m in mates(slot, seat) if st(m).get("busy"))
-
-    def given_back(slot, seat, at):
-        if seats[seat]["forge"] == "forgejo":
-            def acked(m):
-                lease, ack, seen = leases.of_seat(m)
-                # A supervisor that died before it acked never will.
-                return (lease == "github" and ack == "github") or now - max(seen, at) >= LEASE_STALE_SECONDS
-            # An ack while its job runs is not the seat's.
-            return not busy(slot, seat) and all(acked(m) for m in mates(slot, seat))
-        return all(st(m)["withheld"] and not st(m)["busy"] for m in registered(cfg, by_slot.get(slot, [seat]), seat_state, seat))
-
-    jobs = {}
-    for kind, need, age in waits:
-        jobs.setdefault(kind, []).append((age, need))
-    oldest = {k: max(a for a, _ in v) for k, v in jobs.items() if k != "github"}
-
-    def rival(slot):
-        """Age of the oldest GitHub job this slot could take, or -1."""
-        r = runners.get(slot)
-        return max((a for a, need in jobs.get("github", []) if r and slot_takes(cfg, r, slot, need)), default=-1)
-
-    have, want = {}, uncovered_waits(cfg, seat_state, jobs)
-    for slot, lend in sorted(lends.items()):
-        if lend["seat"] and lend["phase"] != "returning":
-            kind = seat_kind(cfg, lend["seat"])
-            have.setdefault(kind, []).append(slot)
-            if lend["phase"] == "granted" and busy(slot, lend["seat"]):
-                want[kind] = want.get(kind, 0) + busy(slot, lend["seat"])
-    back = {}
-    for slot, lend in sorted(lends.items()):
-        seat = lend["seat"]
-        if not seat or lend["phase"] == "returning":
-            continue
-        _, _, seen = leases.get(slot) if seats[seat]["forge"] == "forgejo" else (None, None, now)
-        if unfit(host_of[slot]):
-            back[slot] = unfit(host_of[slot])
-        elif lend["phase"] == "granted" and not busy(slot, seat) and now - max(seen, lend["at"]) >= LEASE_STALE_SECONDS:
-            back[slot] = f"its supervisor has not asked for its lease for {int(now - max(seen, lend['at']))}s"
-    open_lends = {s: (seat_kind(cfg, l["seat"]), busy(s, l["seat"])) for s, l in lends.items()
-                  if l["seat"] and l["phase"] != "returning" and s not in back}
-    back.update(reclaimed(cfg, runners, open_lends, lends, jobs.get("github", []), oldest))
-    for kind, slots in have.items():
-        keep = [s for s in slots if s not in back]
-        # A lend holds as many jobs as it has seats, and want counts every busy seat, so the
-        # lends past want go back, the least busy first; a held lend gave nothing yet.
-        room = sum(len(mates(s, lends[s]["seat"])) for s in keep)
-        for s in sorted(keep, key=lambda s: (busy(s, lends[s]["seat"]), lends[s]["phase"] == "granted", s)):
-            if room - len(mates(s, lends[s]["seat"])) >= want.get(kind, 0):
-                room -= len(mates(s, lends[s]["seat"]))
-                back[s] = f"no {kind} job needs it"
-    admitted = sum(1 for n, r in runners.items() if not r["withheld"] and serves_pool(cfg, r["host"], n))
-
-    def unlend(slot, seat, why):
-        """readmit when its host has room for the slot, so an idle slot does not wait out
-        decide()'s one admit per host per cooldown (hc-643); unlend otherwise."""
-        nonlocal admitted
-        host = host_of.get(slot) or (runners.get(slot) or {}).get("host", "")
-        if host in cfg["hosts"] and not unfit(host) and verdicts[host] == "ROOM" \
-                and admitted < cfg["pool_max_admitted"]:
-            admitted += 1
-            return ("readmit", slot, seat, why)
-        return ("unlend", slot, seat, why)
-
-    steps = []
-    for slot, lend in sorted(lends.items()):
-        seat, r = lend["seat"], runners.get(slot)
-        if slot in back:
-            steps.append(("return", slot, seat, back[slot]) if lend["phase"] == "granted"
-                         else unlend(slot, seat, back[slot]))
-        elif lend["phase"] == "returning":
-            mine = [seat] if seat else by_slot.get(slot, [])
-            if all(given_back(slot, s, lend["at"]) for s in mine):
-                steps.append(unlend(slot, seat, "its seat gave it back"))
-        # Nothing left for the lend to drop either: a lend whose relabel failed half-way is not granted.
-        elif lend["phase"] == "held" and r and r["withheld"] and mark in r["labels"] and not r["busy"] \
-                and not stale(cfg, r["labels"], [withheld_label(cfg, host_of[slot], slot), mark]):
-            steps.append(("grant", slot, seat, "the slot shows withheld, lent and idle"))
-
-    floor = sum(1 for n, r in runners.items() if not r["withheld"] and r["host"] in cfg["hosts"]
-                and serves_pool(cfg, r["host"], n))
-    moved, paired = set(), lent(cfg, runners)
-    for kind in sorted(oldest, key=lambda k: (-oldest[k], k)):
-        need = want[kind] - sum(len(mates(s, lends[s]["seat"])) for s in have.get(kind, []) if s not in back)
-        # One per slot: its first seat the exporter sees, which names the lend for all its seats.
-        mine = sorted({s["slot"]: seat for seat, s in sorted(seats.items(), reverse=True)
-                       if seat_kind(cfg, seat) == kind and seat in seat_state}.items())
-        # Idle capacity already (withheld, with room) first, then an idle slot serving GitHub,
-        # then a busy one nearest its end: the lend withholds it, so it drains into the seat's
-        # job. Lending only idle slots starved Forgejo while GitHub kept every slot busy.
-        rank = lambda r: (r.get("busy", False), not r.get("withheld"), -r.get("elapsed", 0))
-        mine.sort(key=lambda p: (*rank(runners.get(p[0], {})), p[0]))
-        for slot, seat in mine:
-            r, host = runners.get(slot), host_of[slot]
-            if need <= 0:
-                break
-            # An idle withheld slot on a ROOM host adds only the load ROOM has room for, so a burst gets
-            # every such slot in one cycle, cooldown or not (hc-643); an admitted or busy one moves one per
-            # host per cycle. Each slot is lent once a cycle, to the older wait (hc-789).
-            spare = bool(r) and r["withheld"] and not r["busy"] and verdicts.get(host) == "ROOM"
-            if slot in lends or slot in [s for _, s, *_ in steps] or slot in paired or (host in moved and not spare) or unfit(host) or not r:
-                continue
-            if seat not in seat_state or (seats[seat]["forge"] != "forgejo" and not seat_state[seat]["online"]):
-                continue
-            if r["withheld"] and not spare:
-                continue
-            if not r["withheld"] and floor - 1 < cfg["pool_min_admitted"]:
-                continue
-            if rival(slot) >= oldest[kind] and not jump_allowed(cfg, kind, rival(slot), open_lends, back, steps):
-                continue
-            floor -= 0 if r["withheld"] else 1
-            if not spare:
-                moved.add(host)
-            need -= len(mates(slot, seat))
-            steps.append(("lend", slot, seat, f"a {kind} job has waited {int(oldest[kind])}s"))
-
-    granted = {(s, seat_kind(cfg, l["seat"])) for s, l in lends.items() if l["phase"] == "granted" and l["seat"]}
-    steps += [("withhold", "", seat, "admitted with no slot lent to it") for seat, s in sorted(seats.items())
-              if s["forge"] != "forgejo" and seat in seat_state and not seat_state[seat]["withheld"]
-              and (s["slot"], seat_kind(cfg, seat)) not in granted]
-    return per_seat(cfg, steps, mates, by_slot, seat_state)
-
-
-def jump_allowed(cfg, kind, wait, open_lends, back, steps):
-    """config.json jump_lends {kind: N}: while fewer than N lends of a short kind are open or lent this
-    cycle, one more skips the age rule against a GitHub job that has waited under jump_max_seconds, here
-    and in reclaimed(), so a fan-in job created after the Unity queue formed does not wait it out (ucp-2881)."""
-    held = sum(1 for s, (k, _) in open_lends.items() if k == kind and s not in back) \
-        + sum(1 for step in steps if step[0] == "lend" and seat_kind(cfg, step[2]) == kind)
-    return held < max(cfg.get("jump_lends", {}).get(kind, 0), 0) \
-        and wait < cfg.get("jump_max_seconds", JUMP_MAX_SECONDS)
-
-
-def reclaimed(cfg, runners, open_lends, lends, github_jobs, oldest):
-    """{slot: why} of the lends GitHub jobs take back. open_lends: {slot: (kind, busy seats)} of the lends
-    not already going back; lends: lend_plan()'s, for those that are; github_jobs: [(age, labels)]; oldest: {kind: age}.
-    Each GitHub job that has waited longer than any job of a lend's kind takes one lent slot back, busy or
-    not: a stream of short light jobs keeps a lent slot busy for good, so waiting for it to go idle left 13
-    Unity slots lent while playground Tests waited 30 minutes (hc-766). Idle lends go first, and a returning
-    lend is that job's slot already, so one job does not pull back every lend while the first drains.
-    A lend whose kind has nothing waiting is not reclaimed: its jobs are the ones running, and the want
-    rule returns it once idle. Read as age -1, any GitHub job took it back minutes after its grant.
-    A jump_lends kind's busiest N lends go back only to a job older than jump_max_seconds too, so a stream
-    of light jobs cannot hold one from a Unity job for good."""
-    rivals, claimed = sorted(github_jobs, key=lambda j: -j[0]), set()
-    keep = set()
-    for k, n in cfg.get("jump_lends", {}).items():
-        keep.update(sorted((s for s, (kind, _) in open_lends.items() if kind == k),
-                           key=lambda s: (-open_lends[s][1], s))[:max(n, 0)])
-    jump_max = cfg.get("jump_max_seconds", JUMP_MAX_SECONDS)
-
-    def claim(slot, older_than):
-        r = runners.get(slot)
-        for i, (age, need) in enumerate(rivals):
-            if i not in claimed and age > older_than and r and slot_takes(cfg, r, slot, need):
-                claimed.add(i)
-                return age
-        return None
-
-    for slot in sorted(s for s, l in lends.items() if l["phase"] == "returning"):
-        claim(slot, -1)
-    out = {}
-    for slot, (kind, _) in sorted(open_lends.items(), key=lambda p: (p[1][1], p[0])):
-        if kind not in oldest:
-            continue
-        age = claim(slot, max(oldest[kind], jump_max) if slot in keep else oldest[kind])
-        if age is not None:
-            out[slot] = f"a GitHub job it takes has waited {int(age)}s, longer than any {kind} job"
-    return out
-
-
-def registered(cfg, on_slot, seat_state, seat):
-    """The seats of on_slot of seat's kind the exporter sees: every one a return must withhold and a unlend
-    waits for, since one past pack()'s limit may still be admitted."""
-    return [m for m in on_slot if m in seat_state and seat_kind(cfg, m) == seat_kind(cfg, seat)]
-
-
-def per_seat(cfg, steps, mates, by_slot, seat_state):
-    """steps with each GitHub lend's grant and return split per seat: a lend serves several seats of one
-    kind, each relabelled in its own step. mates(slot, seat) are the seats a grant admits."""
-    out = []
-    for name, slot, seat, why in steps:
-        if name in ("grant", "return") and cfg["seats"][seat]["forge"] != "forgejo":
-            group = mates(slot, seat) if name == "grant" else registered(cfg, by_slot[slot], seat_state, seat)
-            out += [(name, slot, m, why) for m in dict.fromkeys([seat, *group])]
-        else:
-            out.append((name, slot, seat, why))
-    return out
-
-
-def adopt(cfg, slot, seat_state, leases, now):
-    """The lend a slot found by its mark after a restart was in: granted to a repo seat that is
-    admitted or a Forgejo seat that is busy (its lease turned back to forgejo), held for the
-    slot's Forgejo seat otherwise, so the next cycle grants it again or gives it back as any lend.
-    A mark on a slot no seat borrows is returning."""
-    mine = sorted(n for n, s in cfg["seats"].items() if s["slot"] == slot)
-    st = lambda seat: seat_state.get(seat, {})
-    for seat in mine:
-        s = cfg["seats"][seat]
-        if (s["forge"] == "forgejo" and st(seat).get("busy")) or \
-                (s["forge"] != "forgejo" and st(seat) and not st(seat)["withheld"]):
-            if s["forge"] == "forgejo":
-                leases.set(slot, "forgejo")
-            return {"seat": seat, "phase": "granted", "at": now}
-    fj = [seat for seat in mine if cfg["seats"][seat]["forge"] == "forgejo"]
-    if fj:
-        return {"seat": fj[0], "phase": "held", "at": now}
-    return {"seat": None, "phase": "returning", "at": now}
-
-
-def seat_scope(cfg, seat):
-    """Where GitHub lists a GitHub seat's runner: its personal repo, or the org for a light or heavy seat."""
-    s = cfg["seats"][seat]
-    return f"repos/{s['repo']}" if s.get("repo") else f"orgs/{cfg['org']}"
-
-
-def seat_labels(cfg, seat, action):
-    """Admit or withhold a GitHub seat: its caps, or the seat withheld label."""
-    scope = seat_scope(cfg, seat)
-    s = cfg["seats"][seat]
-    rid, have, _ = find_runner(scope, seat)
-    held = cfg["seat_withheld_label"]
-    relabel(scope, rid, have, *((s["caps"], [held]) if action == "admit" else ([held], s["caps"])))
-
-
-def lend_apply(cfg, steps, lends, leases, now, last_action):
-    """Carry out lend_plan()'s steps. Each re-reads the slot from GitHub first: a lend or a
-    grant waits while it is busy, an unlend while a repo seat of it is; a busy slot's lend
-    withholds it, so it drains."""
-    org, seats = f"orgs/{cfg['org']}", cfg["seats"]
-    for step, slot, seat, why in steps:
-        # A lend found by its mark may be on a slot no seat borrows any more: its host by name.
-        host = seats[seat]["host"] if seat else next((s["host"] for s in seats.values() if s["slot"] == slot),
-                                                     max((h for h in cfg["hosts"] if slot.startswith(h + "-")),
-                                                         key=len, default=""))
-        print(f"{step} {slot or seat}{f' for {seat}' if seat and slot else ''} on {host}: {why}", flush=True)
-        try:
-            forgejo = bool(seat) and seats[seat]["forge"] == "forgejo"
-            if step == "withhold":
-                seat_labels(cfg, seat, "withhold")
-                continue
-            if step in ("unlend", "readmit"):
-                mine = [n for n, s in seats.items() if s["slot"] == slot
-                        and (not seat or seat_kind(cfg, n) == seat_kind(cfg, seat))]
-                if any(seats[s]["forge"] != "forgejo" and seat_busy(cfg, s) for s in mine):
-                    print(f"{step} {slot}: a seat of it is busy, next cycle", flush=True)
-                    continue
-                rid, have, _ = find_runner(org, slot)
-                if step == "readmit":
-                    add = admit_labels(cfg, host, slot)
-                    relabel(org, rid, have, add, [cfg["lent_label"]] + stale(cfg, have, add))
-                    last_action[host] = now
-                else:
-                    relabel(org, rid, have, [], [cfg["lent_label"]])
-                del lends[slot]
-                continue
-            if step == "return":
-                if forgejo:
-                    leases.set(slot, "github")
-                else:
-                    seat_labels(cfg, seat, "withhold")
-                lends[slot].update(phase="returning", at=now)
-                continue
-            rid, have, busy = find_runner(org, slot)
-            if busy and step == "grant":
-                print(f"grant {slot}: it is busy, next cycle", flush=True)
-                continue
-            if step == "lend":
-                # Recorded first, so a relabel that fails half-way is a held lend that goes back
-                # when no job needs it, never a lent mark the governor does not know.
-                lends[slot] = {"seat": seat, "phase": "held", "at": now}
-                last_action[host] = now
-                add = [withheld_label(cfg, host, slot), cfg["lent_label"]]
-                relabel(org, rid, have, add, stale(cfg, have, add))
-            elif step == "grant":
-                if forgejo:
-                    leases.set(slot, "forgejo")
-                else:
-                    seat_labels(cfg, seat, "admit")
-                lends[slot].update(phase="granted", at=now)
-        except API_ERRORS as e:
-            print(f"{step} {slot or seat} failed: {e}", flush=True)
-
-
-def seat_busy(cfg, name):
-    """Whether a GitHub seat runs a job, read live; a runner GitHub no longer lists runs none."""
-    try:
-        return find_runner(seat_scope(cfg, name), name)[2]
-    except KeyError:
-        return False
 
 
 def sigv4(service, region, key, secret, host, body, t, extra=None,
@@ -2384,9 +1881,9 @@ class State:
 WITHHELD_REASONS = ("lent", "pin", "disk", "hot", "cooldown", "no-work")
 
 
-def withheld_reasons(cfg, hosts, runners, lends, pins, last_action, now):
+def withheld_reasons(cfg, hosts, runners, pins, last_action, now):
     """{runner: reason} for each withheld pool slot, the first of WITHHELD_REASONS that holds:
-    lent (to its pair or a seat), pin, disk (FULL, or short of the admit disk), hot (HOT, or short
+    lent (to its pair), pin, disk (FULL, or short of the admit disk), hot (HOT, or short
     of admit on load, pressure, memory or heat), cooldown (a ROOM host that acted within
     cooldown_seconds), no-work (room, and nothing waiting it could take)."""
     paired, out = lent(cfg, runners), {}
@@ -2397,7 +1894,7 @@ def withheld_reasons(cfg, hosts, runners, lends, pins, last_action, now):
         host = r["host"]
         v, why = verdicts.get(host, ("STANDBY", ""))
         short = short_of_admit(why)
-        if name in (lends or {}) or name in paired:
+        if name in paired:
             out[name] = "lent"
         elif host in (pins or {}):
             out[name] = "pin"
@@ -2425,8 +1922,8 @@ def effective_slots(cfg, host, decisions, pins, registered, admitted):
     return (min(pinned[host], registered), sources[host]) if obeyed else (admitted, "governor")
 
 
-def render(cfg, hosts, runners, queue, decisions, ok, instances=None, budget=None, lends=None, withheld=None,
-           in_units=None, pins=None, weights=None):
+def render(cfg, hosts, runners, queue, decisions, ok, instances=None, budget=None, withheld=None,
+           in_units=None, pins=None):
     L = ["# HELP ci_governor_ok 1 when every source answered this cycle", "# TYPE ci_governor_ok gauge",
          f"ci_governor_ok {1 if ok else 0}", f"ci_governor_queue {queue}",
          "# HELP ci_governor_admitted Pool runners on a host that carry the pool label (may take jobs)",
@@ -2463,17 +1960,10 @@ def render(cfg, hosts, runners, queue, decisions, ok, instances=None, budget=Non
         L.append(f'ci_governor_disk_held{{host="{host}"}} {1 if held else 0}')
     # A paired slot held back while its pair uses the cores is normal work, not a hold for
     # load: the dashboards say "lent" for these and "withheld" for the rest.
-    L += ["# HELP ci_governor_lent 1 for a withheld slot whose cores another runner uses: its pair (to: tests or build) "
-          "or a seat it is lent to (to: forgejo, repo, light or heavy, seat: the seat)",
+    L += ["# HELP ci_governor_lent 1 for a withheld slot whose cores another runner uses: its pair (to: tests or build)",
           "# TYPE ci_governor_lent gauge"]
     for name, (host, to) in sorted(lent(cfg, runners).items()):
         L.append(f'ci_governor_lent{{host="{host}",name="{name}",to="{to}"}} 1')
-    for name, lend in sorted((lends or {}).items()):
-        seat = cfg["seats"].get(lend["seat"] or "", {})
-        host = runners.get(name, {}).get("host") or seat.get("host", "")
-        to = ("forgejo" if seat.get("forge") == "forgejo" else "repo" if seat.get("repo")
-              else seat["caps"][0] if seat else "seat")
-        L.append(f'ci_governor_lent{{host="{host}",name="{name}",to="{to}",seat="{lend["seat"] or ""}"}} 1')
     # Why each withheld slot is held, for the CI chip's "N held: <reason>" (withheld_reasons()).
     L += ["# HELP ci_governor_withheld 1 for each withheld pool slot, by why: " + ", ".join(WITHHELD_REASONS),
           "# TYPE ci_governor_withheld gauge"]
@@ -2484,7 +1974,7 @@ def render(cfg, hosts, runners, queue, decisions, ok, instances=None, budget=Non
         L += ["# HELP ci_governor_capacity_units Slots on a host that are busy or can take work (not withheld as pin, disk "
               "or hot), each online runner of a whole-slot host and each local seat it may grant; a row per topology host",
               "# TYPE ci_governor_capacity_units gauge",
-              "# HELP ci_governor_busy_units Slot units in use: 1 per busy slot, a lent slot's busy seats by weight, "
+              "# HELP ci_governor_busy_units Slot units in use: 1 per busy slot, "
               "1 per running whole-slot runner and per held local seat",
               "# TYPE ci_governor_busy_units gauge"]
         for host in sorted(capacity):
@@ -2498,14 +1988,6 @@ def render(cfg, hosts, runners, queue, decisions, ok, instances=None, budget=Non
         if drain is not None:
             L += ["# HELP ci_governor_drain_seconds How long the backlog takes to run on today's capacity",
                   "# TYPE ci_governor_drain_seconds gauge", f"ci_governor_drain_seconds {int(drain)}"]
-    if weights is not None:
-        # One row per kind, so a reader never finds a kind missing: a kind with no measurement (too
-        # few samples, or a whole-slot kind) is 1, the weight pack() and units() give it.
-        L += ["# HELP ci_governor_kind_weight A job kind's share of a slot: its measured p90 (measured=true), "
-              "else 1 (measured=false)", "# TYPE ci_governor_kind_weight gauge"]
-        for kind in cfg["kinds"]:
-            L.append(f'ci_governor_kind_weight{{kind="{kind}",measured="{str(kind in weights).lower()}"}} '
-                     f'{weights.get(kind, 1.0):g}')
     # The reason is in the log, not a label: it changes every cycle.
     L += ["# HELP ci_governor_decision This cycle's verdict and actions per host (a paired host can show several)", "# TYPE ci_governor_decision gauge"]
     # A paired host moves several slots in one cycle: one row per host, verdict and action.
@@ -2575,14 +2057,13 @@ def render_budget(b):
     return L
 
 
-def cycle(cfg, last_action, tracked=None, budget=None, lending=None, local=None):
-    """One reading and its actions. lending is (Leases, lends) to lend slots to seats, None not to;
-    local is the LocalSeats to admit local runs to, None not to."""
+def cycle(cfg, last_action, tracked=None, budget=None, local=None):
+    """One reading and its actions. local is the LocalSeats to admit local runs to, None not to."""
     now = time.time()
     try:
         hosts, runners, waiting = observe(pools(cfg))
         shared_waiting = observe_shared(cfg)
-        seat_state, seat_waits = observe_seats(cfg) if lending else ({}, [])
+        seat_state, seat_waits = observe_seats(cfg)
         machine_state = observe_machines(cfg)
     except API_ERRORS as e:
         print(f"blind cycle, deciding nothing: {e}", flush=True)
@@ -2594,41 +2075,7 @@ def cycle(cfg, last_action, tracked=None, budget=None, lending=None, local=None)
     queue = len(pool_jobs(waiting, build_marks(cfg)))
     instances = power_readings(cfg, runners, {} if tracked is None else tracked, now)
     pins, pin_sources = read_pins(cfg, now)
-    leases, lends = lending or (None, {})
-    # A slot that carries the lent mark from before a restart stays lent to its seat (hc-643).
-    # The exporter lags a cycle, so the mark is confirmed live before it is adopted: a slot whose
-    # live labels lack it is read with those labels, and one GitHub does not list is no runner.
-    # A read that fails adopts from the exporter's reading, as a lent slot is never one to admit.
-    for name, r in sorted(runners.items()):
-        if lending and cfg["lent_label"] in r["labels"] and name not in lends:
-            try:
-                _, live, busy = find_runner(f"orgs/{cfg['org']}", name)
-            except KeyError:
-                print(f"{name}: the exporter lists a runner GitHub does not; leaving it out", flush=True)
-                del runners[name]
-                continue
-            except API_ERRORS as e:
-                print(f"{name}: reading its labels live failed, adopting its lent mark: {e}", flush=True)
-                live, busy = r["labels"], r["busy"]
-            live = frozenset(l.lower() for l in live)
-            if cfg["lent_label"] not in live:
-                print(f"{name}: the exporter still shows a lent mark GitHub no longer has; not a lend", flush=True)
-                runners[name] = {**r, "labels": live, "busy": busy,
-                                 "withheld": any(l.endswith("-withheld") for l in live)}
-                continue
-            lends[name] = adopt(cfg, name, seat_state, leases, now)
-            print(f"{name} was lent before this start; {lends[name]['phase']} for {lends[name]['seat']}", flush=True)
-    weights = {}
-    if lending:
-        # First, so the oldest wait wins a slot: a host a lend moved is in its cooldown for decide().
-        weights = kind_weights(cfg, now)
-        leases.limit({s["slot"]: pack(cfg, weights, s["slot"], n) for n, s in cfg["seats"].items()
-                      if s["forge"] == "forgejo"})
-        steps = lend_plan(cfg, hosts, runners, seat_state, seat_waits, lends, leases, pins, last_action, now, weights)
-        lend_apply(cfg, steps, lends, leases, now, last_action)
-    # A lent slot is the lending's alone: decide() never admits or counts it.
-    governed = {n: r for n, r in runners.items() if n not in lends}
-    decisions = decide(cfg, hosts, governed, waiting, last_action, now, instances, pins, shared_waiting)
+    decisions = decide(cfg, hosts, runners, waiting, last_action, now, instances, pins, shared_waiting)
     for a in decisions:
         host, action, runner, v, why = a
         if action != "start" and host in instances:
@@ -2672,15 +2119,15 @@ def cycle(cfg, last_action, tracked=None, budget=None, lending=None, local=None)
         # After decide(): a slot it moved this cycle puts the host in its cooldown for local runs too.
         local_pins = read_local_pins(cfg)
         local_pass(cfg, local, verdicts, last_action, now, local_pins)
-    withheld = withheld_reasons(cfg, hosts, runners, lends, pins, last_action, now)
+    withheld = withheld_reasons(cfg, hosts, runners, pins, last_action, now)
     in_units = every_machine(
-        cfg, units(cfg, runners, seat_state, seat_waits, waiting, shared_waiting, weights, withheld, job_durations()),
+        cfg, units(cfg, runners, seat_waits, waiting, shared_waiting, withheld, job_durations()),
         machine_units(cfg, machine_state), local_units(cfg, local, verdicts, local_pins) if local is not None else ({}, {}, 0),
         slice_units(cfg, seat_state))
     with State.lock:
         State.metrics = "ci_governor_up 1\n" + render(
-            cfg, hosts, runners, queue, decisions, True, instances, budget, lends, withheld, in_units,
-            (pins, pin_sources), weights if lending and WEIGHTS["at"] is not None else None)
+            cfg, hosts, runners, queue, decisions, True, instances, budget, withheld, in_units,
+            (pins, pin_sources))
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -2738,7 +2185,7 @@ def main():
     if not TOKEN:
         sys.exit("needs GITHUB_TOKEN (Organization > Self-hosted runners: write)")
     # Before the server: a /lease asked before this answers 404, which a supervisor reads as github.
-    leases = Leases({n: s["slot"] for n, s in cfg["seats"].items() if s["forge"] == "forgejo"})
+    leases = Leases()
     standing_leases(cfg, leases)
     local = LocalSeats(cfg)
     Handler.leases, Handler.local = leases, local
@@ -2746,12 +2193,12 @@ def main():
     server = ThreadingHTTPServer(("", PORT), Handler)
     server.daemon_threads = True
     Thread(target=server.serve_forever, daemon=True).start()
-    print(f"ci-runner-governor: hosts {', '.join(sorted(cfg['hosts']))}, seats {', '.join(sorted(cfg['seats']))}, standing {', '.join(sorted(cfg['standing'])) or 'none'}, "
+    print(f"ci-runner-governor: hosts {', '.join(sorted(cfg['hosts']))}, standing {', '.join(sorted(cfg['standing'])) or 'none'}, "
           f"local seats {', '.join(sorted(local.host_of)) or 'none'}, whole-slot hosts {', '.join(sorted(cfg['machines']))}",
           flush=True)
-    last_action, tracked, budget, lends = {}, {}, {}, {}
+    last_action, tracked, budget = {}, {}, {}
     while True:
-        cycle(cfg, last_action, tracked, budget, (leases, lends), local)
+        cycle(cfg, last_action, tracked, budget, local)
         time.sleep(CYCLE_SECONDS)
 
 

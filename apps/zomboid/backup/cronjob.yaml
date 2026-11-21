@@ -22,6 +22,13 @@ spec:
       backoffLimit: 1
       template:
         spec:
+          # Pinned to one node (its local-path PV or its nodeSelector), so it runs
+          # there even when that node is quarantined: the backup is how the node's
+          # state leaves it (docs/host-tiers.md, Quarantine).
+          tolerations:
+            - key: kblab.me/degraded
+              operator: Exists
+              effect: NoSchedule
           restartPolicy: Never
           # Must land on the same node as the server: the claim is RWO and
           # local-path pins it to hp-victus.

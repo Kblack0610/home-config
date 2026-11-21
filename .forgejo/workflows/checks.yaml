@@ -338,7 +338,39 @@ jobs:
       # A gate that fails on something production does not build teaches people to
       # ignore the gate.
       - name: Flux entry points build
-        run: scripts/check-kustomize-builds.sh rendered.yaml  # rendered.yaml is read by the timeZone step below, so it checks exactly this render
+        run: scripts/check-kustomize-builds.sh rendered.yaml  # rendered.yaml is read by the CronJob steps below, so they check exactly this render
+
+      # A backup CronJob pinned to one node (a local-path PV, or a kubernetes.io/hostname
+      # nodeSelector) can run nowhere else. When cluster-janitor quarantines that node
+      # (kblab.me/degraded, docs/host-tiers.md) a job without the toleration stays
+      # Pending and the state never leaves the flaky node: the vaultwarden and
+      # actual-budget backups missed 2026-11-21 that way (ar-3613).
+      - name: Every node-pinned backup CronJob tolerates the quarantine taint
+        run: |
+          set -eu
+          spec='.spec.jobTemplate.spec.template.spec'
+          pinned="([$spec.volumes[]? | select(has(\"persistentVolumeClaim\"))] | length) > 0 or ($spec.nodeSelector[\"kubernetes.io/hostname\"] // \"\") != \"\""
+          # Matches kblab.me/degraded=true:NoSchedule the way the scheduler does: Exists or value true, effect empty or NoSchedule.
+          tolerates="([$spec.tolerations[]? | select(.key == \"kblab.me/degraded\" and ((.operator // \"Equal\") == \"Exists\" or .value == \"true\") and ((.effect // \"\") == \"\" or .effect == \"NoSchedule\"))] | length) > 0"
+          backups='select(.kind == "CronJob" and (.metadata.name | test("backup")))'
+          # namespace/name, one per line, for each node-pinned backup CronJob that does not tolerate the taint.
+          untolerated() { yq e -N "$backups | select(($pinned) and ($tolerates | not)) | (.metadata.namespace // \"-\") + \"/\" + .metadata.name" -; }
+          # Negative controls: the filter must catch each planted job below, or it checks nothing.
+          head='kind: CronJob\nmetadata:\n  name: planted-backup\n  namespace: ci\nspec:\n  jobTemplate:\n    spec:\n      template:\n        spec:\n'
+          pvc='          volumes:\n            - name: data\n              persistentVolumeClaim:\n                claimName: data\n'
+          host='          nodeSelector:\n            kubernetes.io/hostname: n1\n'
+          tol() { printf '          tolerations:\n            - key: kblab.me/degraded\n%s' "$1"; }
+          for body in "$pvc" "$host" "$pvc$(tol '              operator: Equal\n              value: "false"\n')" "$host$(tol '              operator: Exists\n              effect: NoExecute\n')"; do
+            got=$(printf "$head$body" | untolerated)
+            [ "$got" = "ci/planted-backup" ] || { echo "FAIL: the filter missed a planted backup CronJob that does not tolerate the taint (got '$got'):"; printf "$head$body"; exit 1; }
+          done
+          got=$(printf "$head$pvc$(tol '              operator: Exists\n              effect: NoSchedule\n')" | untolerated)
+          [ -z "$got" ] || { echo "FAIL: the filter flagged a backup CronJob that tolerates the taint (got '$got')"; exit 1; }
+          found=$(yq ea -N "$backups | select($pinned) | .metadata.name" rendered.yaml | grep -c . || true)
+          missing=$(untolerated < rendered.yaml)
+          [ "$found" -gt 0 ] || { echo "FAIL: no node-pinned backup CronJob rendered, so the check checked nothing"; exit 1; }
+          [ -z "$missing" ] || { echo "FAIL: these backup CronJobs are pinned to one node but do not tolerate kblab.me/degraded:NoSchedule, so a quarantined node strands their backup (docs/host-tiers.md, Quarantine):"; echo "$missing"; exit 1; }
+          echo "ok: $found node-pinned backup CronJobs, each tolerates kblab.me/degraded"
 
       # The controller and kube-state-metrics must agree on a CronJob's zone. With no
       # spec.timeZone the k3s controller schedules in its host's zone (Pacific) while KSM
@@ -351,7 +383,7 @@ jobs:
         run: |
           set -eu
           # A CronJob's namespace/name, one per line, for each one with no spec.timeZone.
-          no_zone() { yq ea -N 'select(.kind == "CronJob" and (.spec.timeZone // "") == "") | (.metadata.namespace // "-") + "/" + .metadata.name' -; }
+          no_zone() { yq e -N 'select(.kind == "CronJob" and (.spec.timeZone // "") == "") | (.metadata.namespace // "-") + "/" + .metadata.name' -; }
           # Negative control: the filter must catch a planted CronJob, or it checks nothing.
           planted=$(printf 'kind: CronJob\nmetadata:\n  name: planted\n  namespace: ci\nspec:\n  schedule: "0 3 * * *"\n' | no_zone)
           [ "$planted" = "ci/planted" ] || { echo "FAIL: the filter missed a planted CronJob with no timeZone (got '$planted')"; exit 1; }

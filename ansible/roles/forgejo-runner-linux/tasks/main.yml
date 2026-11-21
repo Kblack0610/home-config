@@ -88,7 +88,7 @@
   register: _forgejo_runner_unit
 
 # A restart stops a running job (TimeoutStopSec in the unit): apply a change with the seat
-# on github, which is every seat the governor has not lent.
+# on github, which is every seat the governor has not set to forgejo.
 - name: Start the seat, restarted on a config, unit or supervisor change
   ansible.builtin.systemd:
     name: "forgejo-runner-{{ forgejo_runner_name }}.service"

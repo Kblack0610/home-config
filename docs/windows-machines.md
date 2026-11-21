@@ -6,9 +6,7 @@ What "on the fleet" means today: the PC pushes a liveness heartbeat every 60s to
 
 ## Inventory
 
-| Name (fleet key) | Windows hostname | IP | User | Notes |
-|------------------|------------------|----|------|-------|
-| `windows-media` (`homelab_windows-media`) | `WINDOWS-MEDIA` | 192.168.1.8 (`windows-media-lan`) | `hughl` (Microsoft account, admin) | The living-room Windows and media box, and the infra Windows test host: agents drive it over SSH ([Driving it from an agent](#driving-it-from-an-agent)) and it is an opt-in runner ([Windows test runner](#windows-test-runner)). Ryzen 9 5900XT (16 cores, since 2026-11-12), 64 GB DDR4-3600, RTX 3050, TV at 3840x2160 and 300% scale. Ethernet (Realtek 2.5GbE) since 2026-10-29. Win10 Pro 22H2, BIOS 3645, legacy BIOS boot (CSM on), SVM on. Hosts the Unity CI VM `windows-media-ci` ([Unity CI VM](#unity-ci-vm-windows-media-ci)). Enrolled 2026-10-16 as `living-room-pc` (`DESKTOP-BPLB04U`, .121), renamed 2026-10-26 |
+No Windows PC is on the fleet now: the last one, `windows-media`, became the Linux CI host `tuf-b550` on 2026-11-20 ([below](#windows-media-retired-2026-11-20)). A new PC adds its row here.
 
 ## The path
 
@@ -52,14 +50,14 @@ The window title must say Administrator, or the admin key file cannot be written
 
 ### 3. Pin the IP (workstation)
 
-Add a reservation to `infrastructure/dhcp/devices.yaml` (desktops go in `.30-.49`, media-only boxes in `.120-.139`, a PC that is also infra, like windows-media, next to the Macs in `.1-.9`), then `dhcp diff` and `dhcp --force sync` per `infrastructure/dhcp/README.md`. Use the MAC of the adapter that is actually `Up` in `Get-NetAdapter -Physical`; a PC on Wi-Fi has a different MAC from its unplugged ethernet port. The PC keeps its old address until its lease renews, so reboot it once from SSH: `shutdown /r /t 60 /c "..."` gives anyone at the screen a minute to cancel with `shutdown /a`.
+Add a reservation to `infrastructure/dhcp/devices.yaml` (desktops go in `.30-.49`, media-only boxes in `.120-.139`, a PC that is also infra next to the Macs in `.1-.9`), then `dhcp diff` and `dhcp --force sync` per `infrastructure/dhcp/README.md`. Use the MAC of the adapter that is actually `Up` in `Get-NetAdapter -Physical`; a PC on Wi-Fi has a different MAC from its unplugged ethernet port. The PC keeps its old address until its lease renews, so reboot it once from SSH: `shutdown /r /t 60 /c "..."` gives anyone at the screen a minute to cancel with `shutdown /a`.
 
 ### 4. Enroll over SSH (workstation)
 
 `enroll.ps1` fetches the pusher, sends one probe heartbeat, and only registers the Scheduled Task if the probe got through. Feed it the token on stdin so it never lands on a command line or in shell history. Use `printf`, not `echo`: zsh's `echo` turns `\e` in a Windows path into an escape character.
 
 ```bash
-PC=hughl@windows-media-lan NAME=windows-media
+PC=<user>@<name>-lan NAME=<name>
 { printf '$env:FLEET_TOKEN = "%s"\n' "$(cat ~/.config/fleet-pulse/token)"
   printf '%s\n' '$f = Join-Path $env:TEMP "enroll.ps1"' \
     'irm https://raw.githubusercontent.com/Kblack0610/.dotfiles/main/.local/src/fleet-pulse/enroll.ps1 -OutFile $f' \
@@ -78,7 +76,7 @@ printf '%s\n' 'Set-ScheduledTask fleet-pulse -Principal (New-ScheduledTaskPrinci
 ### 5. Verify
 
 ```bash
-curl -s https://fleet.kblab.me/api/v1/endpoints/statuses | jq -r '.[] | select(.key=="homelab_windows-media") | .results[-1] | "\(.timestamp) \(.success)"'
+curl -s https://fleet.kblab.me/api/v1/endpoints/statuses | jq -r '.[] | select(.key=="homelab_<name>") | .results[-1] | "\(.timestamp) \(.success)"'
 ```
 
 A timestamp under a minute old and `true`. Check again a few minutes after the S4U switch: the task's `LastTaskResult` is 0 even when a push fails (the pusher exits 0 by contract), so only fresh results in gatus prove the task is pushing.
@@ -87,8 +85,8 @@ A timestamp under a minute old and `true`. Check again a few minutes after the S
 
 - **The PIN is not a password.** A Windows Hello PIN only unlocks the PC at the PC. SSH, Remote Desktop and file sharing want the account password, which on a Microsoft-account login is the Microsoft account password. Step 2 uses keys, so nobody needs it.
 - **Admins ignore `~/.ssh/authorized_keys`.** For a user in Administrators, Windows OpenSSH reads only `C:\ProgramData\ssh\administrators_authorized_keys`, and only if its ACL is Administrators + SYSTEM. Step 2 writes both files so it works either way.
-- **"No route to host" means the network card is asleep, not that the PC is off.** Nothing answered on the LAN at all. On 2026-10-16 the living-room PC (now windows-media) was on with the screen awake and still dropped off the network between checks. It is on Wi-Fi with Windows' default power saving, and the router had also logged a `169.254.x` fallback address for its MAC. Step 2 turns the Wi-Fi and network-card power saving off for this reason.
-- **It does not answer ping.** The Windows firewall drops ICMP echo by default, so `ping` reads a healthy PC as down. Test reachability with `ssh hughl@windows-media-lan hostname` or check the router's ARP table for its MAC instead (`ip neigh | grep -i f4:3b:d8:6f:a7:a7`). On 2026-10-26 a ping wait loop sat for ten minutes after the rename reboot while the PC was already up at .8.
+- **"No route to host" means the network card is asleep, not that the PC is off.** Nothing answered on the LAN at all. On 2026-10-16 the living-room PC was on with the screen awake and still dropped off the network between checks. It is on Wi-Fi with Windows' default power saving, and the router had also logged a `169.254.x` fallback address for its MAC. Step 2 turns the Wi-Fi and network-card power saving off for this reason.
+- **It does not answer ping.** The Windows firewall drops ICMP echo by default, so `ping` reads a healthy PC as down. Test reachability with `ssh $PC hostname` or check the router's ARP table for its MAC instead (`ip neigh | grep -i <mac>`). On 2026-10-26 a ping wait loop sat for ten minutes after the rename reboot while the PC was already up at .8.
 - **`powershell -Command -` reads stdin line by line.** One-line statements work; a multi-line `foreach { ... }` block silently produces nothing. Send anything multi-line as `-EncodedCommand $(iconv -t UTF-16LE script.ps1 | base64 -w0)`.
 - **`Set-NetAdapterPowerManagement` has no `-AllowComputerToTurnOffDevice` parameter**, and `Disable-NetAdapterPowerManagement` leaves that checkbox on. The registry `PnPCapabilities = 24` in step 2 is what clears it.
 - **Interactive vs S4U.** `enroll.ps1` registers the task as Interactive so it works without admin on a locked-down work machine. That flashes a console every minute and stops at logoff. On a home PC that is admin-controlled, S4U is the right setting (step 4).
@@ -104,24 +102,23 @@ Roles, bound in `ansible/playbooks/site.yml`:
 
 - `windows-baseline` - the debloat: Store apps, ASUS/OEM software, telemetry and ads, OneDrive removal, autostart nags, power and network-card settings, hibernation off, gaming settings, cleanup, and the computer name. Every item is a list in its `defaults/main.yml`. Details and measured results: `ansible/roles/windows-baseline/README.md`.
 - `windows-agent-tools` - PowerShell as the SSH shell, execution policy RemoteSigned, and the `C:\tools` desktop helpers. See [Driving it from an agent](#driving-it-from-an-agent).
-- `github-actions-runner-windows` (windows-media only) - the opt-in test runner. See [Windows test runner](#windows-test-runner).
 
 ```bash
 cd ansible && ansible-galaxy collection install -r requirements.yml -p ./collections
-ansible-playbook playbooks/site.yml --limit windows-media --tags windows --check --diff
-ansible-playbook playbooks/site.yml --limit windows-media --tags windows
-ansible windows-media -m ansible.windows.win_reboot -a "pre_reboot_delay=60"   # first apply, or after a rename
+ansible-playbook playbooks/site.yml --limit <name> --tags windows --check --diff
+ansible-playbook playbooks/site.yml --limit <name> --tags windows
+ansible <name> -m ansible.windows.win_reboot -a "pre_reboot_delay=60"   # first apply, or after a rename
 ```
 
 Not wired into the in-cluster `ansible-runner` drift check: its image has no `ansible.windows` collection and its key is not on the PC.
 
 ## Driving it from an agent
 
-SSH is the way in: `ssh hughl@windows-media-lan '<PowerShell>'`. The workstation key is trusted and `hughl` is an admin, so an agent has full control of the machine. For anything multi-line, send `-EncodedCommand` (see the gotcha below):
+SSH is the way in: `ssh $PC '<PowerShell>'` ($PC from step 4). The workstation key is trusted and the user is an admin, so an agent has full control of the machine. For anything multi-line, send `-EncodedCommand` (see the gotcha below):
 
 ```bash
 enc() { iconv -t UTF-16LE | base64 -w0; }
-ssh hughl@windows-media-lan "powershell -NoProfile -EncodedCommand $(enc < script.ps1)"
+ssh $PC "powershell -NoProfile -EncodedCommand $(enc < script.ps1)"
 ```
 
 An SSH session is Windows session 0. A program started from it has no window on the screen and no display GPU, so it is not what you would see on the TV. To test anything visual, use the helpers in `C:\tools`, which go through a one-shot Interactive scheduled task into the logged-on user's desktop (session 1):
@@ -137,32 +134,32 @@ An SSH session is Windows session 0. A program started from it has no window on 
 | `C:\tools\virtual-display.ps1 -On [-Scale 300] [-TvOff]` / `-Off` | Plugs in or unplugs the virtual test monitor. See [A test monitor off the TV](#a-test-monitor-off-the-tv). |
 
 ```bash
-ssh hughl@windows-media-lan 'C:\tools\run-on-desktop.ps1 -Path C:\bnbtest\windows\Game.exe -Arguments "-screen-fullscreen 1"'
-ssh hughl@windows-media-lan 'C:\tools\screenshot.ps1'        # prints C:\tools\runs\screen-<stamp>.png
-scp 'hughl@windows-media-lan:C:/tools/runs/screen-<stamp>.png' .
-ssh hughl@windows-media-lan 'Stop-Process -Name Game'
+ssh $PC 'C:\tools\run-on-desktop.ps1 -Path C:\bnbtest\windows\Game.exe -Arguments "-screen-fullscreen 1"'
+ssh $PC 'C:\tools\screenshot.ps1'        # prints C:\tools\runs\screen-<stamp>.png
+scp "$PC:C:/tools/runs/screen-<stamp>.png" .
+ssh $PC 'Stop-Process -Name Game'
 ```
 
 Things to know:
 
-- **Someone must be logged on.** The helpers and the runner need a desktop session. windows-media signs itself in at boot (see [Unattended restart](#unattended-restart)); on a PC without that, log in at the screen after a reboot. The helpers say so when nobody is logged on.
+- **Someone must be logged on.** The helpers need a desktop session. A PC with `windows_baseline_autologon` signs itself in at boot (see [Unattended restart](#unattended-restart)); on a PC without that, log in at the screen after a reboot. The helpers say so when nobody is logged on.
 - **New windows can open behind the foreground app.** Windows' focus-stealing prevention applies to programs a task starts. A fullscreen game normally takes over; if a screenshot shows something else in front, minimize everything first: `run-on-desktop.ps1 -Path powershell.exe -Arguments '-NoProfile -Command (New-Object -ComObject Shell.Application).MinimizeAll()' -Wait`.
 - **A stale screenshot means the displays are asleep.** The screen turns off after 15 minutes idle, and Windows stops drawing every monitor, virtual ones too, so a capture returns the last frame (2026-10-26: a capture showed the clock from 22 hours earlier). Start what you will screenshot with `-KeepDisplayOn`. The TV being off or on another input does not cause it: Windows keeps drawing.
-- **Put test builds under `C:\bnbtest\`** and delete them when done. C: is a 1 TB disk with about 38 GB free (2026-10-26).
-- **The host key.** Agents cannot write `~/.ssh/known_hosts` on the workstation. After the IP or name changes, the user accepts the new entry once: `ssh -o StrictHostKeyChecking=accept-new hughl@windows-media-lan exit`.
+- **Put test builds under `C:\bnbtest\`** and delete them when done.
+- **The host key.** Agents cannot write `~/.ssh/known_hosts` on the workstation. After the IP or name changes, the user accepts the new entry once: `ssh -o StrictHostKeyChecking=accept-new $PC exit`.
 
 ### Unattended restart
 
-windows-media has to come back by itself after a reboot or a power cut, with no one at the TV. That needs three things:
+A PC with no one at it (a TV PC) has to come back by itself after a reboot or a power cut. That needs three things:
 
 | What | Set by | Check |
 |---|---|---|
 | Power on when mains power returns | Firmware, once, at the PC: **Del** at boot, **Advanced** -> **APM Configuration** -> **Restore AC Power Loss** -> **Power On**, then **F10** to save (ASUS TUF GAMING B550-PLUS WIFI II; [baremetal-power.md](baremetal-power.md)) | A controlled power pull: the PC boots and answers SSH |
-| Sign in at boot | `windows_baseline_autologon: true` (inventory) makes it possible; then once, at the PC: **Win+R**, `netplwiz`, untick **Users must enter a user name and password to use this computer**, **Apply**, type the Microsoft account password twice | `ansible-playbook ... --tags autologon` passes; after a reboot `(Get-CimInstance Win32_ComputerSystem).UserName` is `WINDOWS-MEDIA\hughl` |
+| Sign in at boot | `windows_baseline_autologon: true` (inventory) makes it possible; then once, at the PC: **Win+R**, `netplwiz`, untick **Users must enter a user name and password to use this computer**, **Apply**, type the Microsoft account password twice | `ansible-playbook ... --tags autologon` passes; after a reboot `(Get-CimInstance Win32_ComputerSystem).UserName` is `<HOSTNAME>\<user>` |
 | No sleep on AC | `windows-baseline` power tasks | Already applied |
 
 - **The password stays out of this repo.** netplwiz stores it as an LSA secret on the PC. The role only unhides the netplwiz box (`DevicePasswordLessBuildVersion=0`, which Windows Hello sign-in had set to 2) and asserts `AutoAdminLogon=1`, failing with these steps when it is off.
-- **The trade-off.** Whoever turns the PC on gets `hughl`'s desktop, an admin account. That is the living-room PC's normal state anyway; do not set `windows_baseline_autologon` on a PC that leaves the house.
+- **The trade-off.** Whoever turns the PC on gets that user's desktop, an admin account. That suits a living-room PC; do not set `windows_baseline_autologon` on a PC that leaves the house.
 - **Changing the Microsoft account password breaks it silently.** The stored copy goes stale and the PC stops at the sign-in screen. Repeat the netplwiz step.
 - **The firmware setting is readable over SSH, but its values are not documented.** The board's ASUS WMI class answers `Invoke-CimMethod -InputObject @(Get-CimInstance -Namespace root\wmi ASUSManagement)[0] -MethodName GetOptionData -Arguments @{OptionName='LastState'}` (read 2026-10-26: `ErrorCode=0`, `Value=1`; unknown names return `ErrorCode=14`). `LastState` is most likely Restore AC Power Loss, but which number means **Power On** is unconfirmed, so set it in the firmware screen and never write it blind with `SetOptionData`. Once the screen has been read, record the mapping here.
 
@@ -171,79 +168,16 @@ windows-media has to come back by itself after a reboot or a power cut, with no 
 The TV is also the living room's TV. For a visual test, plug in the virtual monitor, a software-only screen (Virtual Display Driver, installed off by the `windows-agent-tools` role), run the game there, and unplug it after:
 
 ```bash
-ssh hughl@windows-media-lan 'C:\tools\virtual-display.ps1 -On -TvOff'      # prints "virtual monitor: \\.\DISPLAY<n>"
-ssh hughl@windows-media-lan 'C:\tools\run-on-desktop.ps1 -Path C:\bnbtest\windows\Game.exe -KeepDisplayOn'
-ssh hughl@windows-media-lan 'C:\tools\screenshot.ps1 -Display <n>'
-ssh hughl@windows-media-lan 'Stop-Process -Name Game; C:\tools\virtual-display.ps1 -Off'
+ssh $PC 'C:\tools\virtual-display.ps1 -On -TvOff'      # prints "virtual monitor: \\.\DISPLAY<n>"
+ssh $PC 'C:\tools\run-on-desktop.ps1 -Path C:\bnbtest\windows\Game.exe -KeepDisplayOn'
+ssh $PC 'C:\tools\screenshot.ps1 -Display <n>'
+ssh $PC 'Stop-Process -Name Game; C:\tools\virtual-display.ps1 -Off'
 ```
 
 - **`-TvOff` or not.** With `-TvOff` the virtual monitor is the only screen until `-Off`, so the game and the screenshot need no monitor number, and the TV gets no picture from the PC. Use it when the TV is on another source: `-KeepDisplayOn` wakes the displays, and a TV with automatic source switching can jump to the PC's input. Without `-TvOff` the virtual monitor sits beside the TV, which keeps showing what it was. Use that when someone is watching the PC on the TV; start the game with Unity's `-monitor <m>` and check with a screenshot which `m` lands on the virtual monitor. The game takes keyboard focus while it runs either way.
 - **It is 3840x2160 at 300% by default**, the TV's mode. `-Scale` takes any Windows scale (100, 125, ... 500); the resolutions it offers are `windows_agent_tools_vdd_resolutions` in the role.
 - **Always `-Off` when done.** An enabled virtual monitor is a screen nobody can see, and windows that open on it are lost to whoever is at the TV. If a test dies with the TV off, `-Off` brings it back; so does a reboot, because `-TvOff` is not saved.
 
-## Windows test runner
+## windows-media, retired 2026-11-20
 
-windows-media is an org-scoped GitHub Actions runner for Windows-only issues, the way mac-mini is for macOS. It is opt-in and never a merge gate: its labels are the runner's own `self-hosted`, `Windows`, `X64` plus `host-windows-media`, and as of 2026-10-26 no CI workflow asks for any of those, so a job lands here only when it says so:
-
-```yaml
-jobs:
-  windows-check:
-    runs-on: [self-hosted, windows]
-    steps:
-      - run: systeminfo | findstr /B /C:"OS Name" /C:"Host Name"
-```
-
-- It runs in hughl's desktop session (scheduled task `actions-runner`, started at logon), not as a Windows service, so job steps can open windows on the TV and use the GPU. It is offline whenever nobody is logged on.
-- Every job step runs at below-normal priority (Task Scheduler priority 7, for CPU, I/O and memory), so what is on the TV wins.
-- This runner is not part of the Unity pool, and there is no Unity editor on Windows: Windows players are cross-built on the Linux pool (dodginballs `build-windows`), and this box runs them. The pool slots on this PC are in the Linux VM ([Unity CI VM](#unity-ci-vm-windows-media-ci)).
-- Role: `ansible/roles/github-actions-runner-windows`. It counts in `apps/github-runner-exporter` as `windows-media:windows:1`.
-
-## Hardware notes
-
-- GPU: ASUS GeForce RTX 3050 6 GB (`PCI\VEN_10DE&DEV_2584`), the only video out: neither the 5500 nor the 5900XT has an iGPU, so the BIOS shows only on the TV through the card, never the board's HDMI. The TV (Samsung) ran 3840x2160 at 30 Hz on 2026-11-12 (`Win32_VideoController`); 60 Hz needs a Premium or Ultra High Speed HDMI cable and the TV input's enhanced HDMI setting on.
-- BIOS input: the Logitech USB receiver (`VID_046D&PID_C52B`) works before boot; the Bluetooth keyboards and the MX Master 3S do not.
-- The 64 GB (Corsair CMG64GX4M2D3600C18, 2x32 GB DDR4-3600) runs at 3600 with D.O.C.P. on since 2026-11-12 (`Win32_PhysicalMemory` `ConfiguredClockSpeed`); it ran at 2133 before. Two of the four DIMM slots are free.
-- Disk: one Crucial P3 1 TB (`CT1000P3SSD8`, QLC) holds Windows and the VM. The Crucial E100 2 TB bought for CI is not installed yet ([Unity CI VM](#unity-ci-vm-windows-media-ci)).
-- Why it gets a 16-core CPU: [unity-ci-hardware.md](unity-ci-hardware.md#buying-in-the-ram-shortage).
-
-## CPU upgrade to the Ryzen 9 5900XT
-
-Done 2026-11-12: BIOS 3645 flashed by EZ Flash 3 from a FAT32 stick, the 5900XT in on the existing Thermalright Phantom Spirit 120 EVO, then in the BIOS: the fTPM reset answered Y, D.O.C.P. on, SVM Mode on, CSM on (the disk is MBR and Windows boots legacy, so with CSM off it finds no boot device). A flash resets every setting, so check those four after any future flash.
-
-A flash that fails partway is recoverable: rename the `.CAP` with the `BIOSRenamer.exe` beside it in `C:\BIOS\3645\`, put it on a FAT32 stick in the FlashBack port and hold the BIOS FlashBack button; it needs no working CPU.
-
-## Unity CI VM (windows-media-ci)
-
-`windows-media-ci` is an Ubuntu 24.04 Hyper-V VM on this PC and a Unity CI pool host with 3 slots (since 2026-11-13), none dedicated to a kind: each takes Unity jobs, and the governor also lends it to its light seats, the Forgejo seats and the personal repo runners, never heavy (the Windows 10 host refuses nested virtualization, so the VM has no `/dev/kvm`) ([unity-ci-host.md](runbooks/unity-ci-host.md#slots-and-seats)), managed like the other Linux pool hosts (its entries are in `ansible/inventory.yml` `unity_ci_runners` and `ci_hosts`). Hyper-V and not WSL2: WSL2 on Windows 10 sits behind NAT with an address that changes, and runs only while someone is signed in, while the VM has its own LAN address and starts at boot with nobody at the TV.
-
-| | |
-|---|---|
-| Address | 192.168.1.27 (`windows-media-ci.lan`), DHCP reservation for its static MAC `00:15:5D:01:C1:A1` in `infrastructure/dhcp/devices.yaml` |
-| Login | `kblack0610`, the workstation's `~/.ssh/id_ed25519.pub`, passwordless sudo, no password login |
-| Size | Gen 2, 24 vCPUs (12 cores, SMT siblings n and n+1), 50 GB static memory, which leaves Windows 14 GB |
-| Disk | `C:\Hyper-V\windows-media-ci\noble.vhdx`, dynamic, 300 GB, on the P3; checkpoints off |
-| Network | external switch `LAN` on `Ethernet 2` (the Realtek), shared with Windows (`AllowManagementOS`) |
-| Start and stop | `AutomaticStartAction Start` (30 s delay), `AutomaticStopAction ShutDown` |
-| Console | COM1 on the pipe `\\.\pipe\windows-media-ci-com1`, the way in when SSH is down |
-| Metrics | node_exporter (play "Unity CI host monitoring" in `site.yml`), scraped through `apps/monitoring/external-standalone-nodes.yaml`; no temperature, a VM has no k10temp |
-
-Slots: three of three cores and 14 GB each, with three cores and 8 GB for the guest (`ci_unity_slot_cpus` in `ci_hosts`). Two more 32 GB DDR4-3600 sticks (the same Corsair kit, in the two free slots) give the memory for 5, but 5 slots of three cores plus the guest's is 18 of the PC's 16 cores, so a fourth slot is the most the CPU carries; decide it after a day of load with the TV in use.
-
-Day to day, in an Administrator PowerShell over SSH: `Get-VM windows-media-ci`, `Start-VM`, `Stop-VM` (a clean shutdown), `Restart-VM`. A Windows update reboot shuts the VM down and starts it again, so slots go offline for that time.
-
-### Moving to the E100
-
-The P3 is QLC, which wears out under CI writes. Once the E100 2 TB is in: format it NTFS (say `D:`), then with the VM running, `Move-VMStorage -VMName windows-media-ci -DestinationStoragePath D:\Hyper-V\windows-media-ci`, then grow the disk with `Resize-VHD` while the VM is off and `growpart /dev/sda 1 && resize2fs /dev/sda1` inside it.
-
-### Rebuilding it
-
-1. Hyper-V: `Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V -All`, then reboot.
-2. The switch: `New-VMSwitch -Name LAN -NetAdapterName 'Ethernet 2' -AllowManagementOS $true`. It drops the PC's network for a few seconds and the SSH session with it, so run it from a `.ps1` as a SYSTEM scheduled task, with `Start-Transcript` to read the result afterwards.
-3. The disk, on the workstation: download `noble-server-cloudimg-amd64.img` and check it against Ubuntu's `SHA256SUMS`, `qemu-img resize` it to 300G (qemu-img cannot resize a vhdx), then `qemu-img convert -O vhdx -o subformat=dynamic`, and copy it to `C:\Hyper-V\windows-media-ci\`.
-4. The cloud-init seed: `user-data` (hostname, the `kblack0610` user with the SSH key and `NOPASSWD` sudo, `ssh_pwauth: false`) and `meta-data` (`instance-id`, `local-hostname`) on a 64 MB fixed VHDX, MBR, FAT32, label `CIDATA` (`New-VHD`, `Mount-VHD`, `Format-Volume`), attached as a second disk. cloud-init's NoCloud source reads it at first boot.
-5. The VM: `New-VM -Generation 2 -MemoryStartupBytes 50GB -VHDPath ...noble.vhdx -SwitchName LAN`, `Set-VM -ProcessorCount 24 -StaticMemory -AutomaticStartAction Start -AutomaticStartDelay 30 -AutomaticStopAction ShutDown -CheckpointType Disabled`, `Set-VMFirmware -SecureBootTemplate MicrosoftUEFICertificateAuthority` (the default Windows template does not boot Ubuntu), `Set-VMNetworkAdapter -StaticMacAddress 00155D01C1A1`, `Set-VMComPort -Number 1 -Path \\.\pipe\windows-media-ci-com1`, `Start-VM`.
-6. From `ansible/`: `ansible-playbook playbooks/site.yml --limit windows-media-ci --tags monitoring`, then `--tags unity-ci`. A rebuilt VM is a new Unity machine: it gets a new machine id, so return the old activation on the Unity ID portal.
-
-## Windows 10 end of support
-
-windows-media runs Windows 10 22H2. Consumer Extended Security Updates ended 2026-10-13, so it no longer gets security patches; Defender definitions still update. The CPU and TPM qualify for Windows 11, but the PC boots in legacy BIOS mode from an MBR disk. `mbr2gpt /validate /allowFullOS` then `/convert /allowFullOS` over SSH, followed by one visit to the BIOS (CSM off, Secure Boot on), unlocks an in-place Windows 11 upgrade; after that the PC boots only with CSM off. SVM has been on since 2026-11-12, so Hyper-V runs either way.
+The living-room PC `windows-media` (192.168.1.8) was the only Windows PC here. Windows is gone: on 2026-11-20 it was installed by PXE as `tuf-b550`, a native CachyOS k3s agent and Unity CI host with 4 slots, in place of the Hyper-V VM `windows-media-ci` (192.168.1.27) it ran. Its entries are in `ansible/inventory.yml`; how it joined is [runbooks/bare-metal-host.md](runbooks/bare-metal-host.md), how its slots run is [runbooks/unity-ci-host.md](runbooks/unity-ci-host.md), and its hardware is in [unity-ci-hardware.md](unity-ci-hardware.md). The opt-in org runner `windows-media` and its role `github-actions-runner-windows` went with it; both are in git history.

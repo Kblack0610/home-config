@@ -34,8 +34,16 @@ all:
       wide: unity-wide
       withheld: unity-withheld
       build_withheld: unity-build-withheld
-      seat_withheld: light-withheld
-      lent: unity-lent
+    # Each small kind's p90 job: cores and memory in G, one sample per busy runner per minute
+    # pooled over every runner of the kind (scripts/ci-kind-weights.py --days 3, to
+    # 2026-11-21 06:09Z: light 3144 samples, heavy 246, forgejo 1993, repo 346). A host's
+    # ci_small_slice registers as many seats of each kind as fit it at this size
+    # (scripts/render-ci-topology.py). Re-measure and re-render when a kind's p90 moves.
+    ci_small_job_size:
+      light: {cpus: 2.86, memory_gb: 0.7}
+      heavy: {cpus: 3.49, memory_gb: 2.7}
+      forgejo: {cpus: 1.44, memory_gb: 0.1}
+      repo: {cpus: 0.63, memory_gb: 0.3}
 
   children:
     # Provisional tiers for placement records; P2 qualification and P5 review
@@ -92,19 +100,30 @@ all:
         deskslim-2:
           host_tier: standard
           ansible_host: 192.168.1.29
-          ssh_host_ed25519: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIN6Us7+Ypxlco5izmZf8Nu0m2Hq2GBvVpPtxh9tCKRGA
+          ssh_host_ed25519: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHGA5wGSM5aQxkAdI33S+gPcftmo3mn7/oj9OWmPR/sv
           k3s_role: agent
           k3s_extra_args:
             - --node-label=node.kubernetes.io/friendly-name=deskslim-2
         # Its twin: ASRock DeskSlim X600, Ryzen 9 7900X (12 cores), 61G. PXE 2026-11-16,
-        # off with bad RAM until the replacement kit, joined 2026-11-18.
+        # off with bad RAM until the replacement kit, joined 2026-11-18. Reinstalled on a
+        # 1 TB drive 2026-11-20 (docs/runbooks/unity-ci-host.md#apply-the-play, a slot registers withheld).
         deskslim-1:
           host_tier: standard
           ansible_host: 192.168.1.19
-          ssh_host_ed25519: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG7qDamILuEsji8FIwIVgEzF/cZpu29tcNhuA6nP3bQG
+          ssh_host_ed25519: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILqCoF90nG/OlyHlKtYispdhQrgVzuToqTM369Ub9jTe
           k3s_role: agent
           k3s_extra_args:
             - --node-label=node.kubernetes.io/friendly-name=deskslim-1
+        # The living-room PC that was windows-media: ASUS TUF GAMING B550-PLUS WIFI II,
+        # Ryzen 9 5900XT (16 cores), 62G, one Crucial P3 1 TB. Windows wiped, PXE 2026-11-20
+        # and joined that day. Its Wi-Fi (wlp5s0, rtw89) is down and logs no link line.
+        tuf-b550:
+          host_tier: standard
+          ansible_host: 192.168.1.8
+          ssh_host_ed25519: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFJArKnl3fz8g0t+wpotLpfsfhzMDAgXffQL0vUO53Fe
+          k3s_role: agent
+          k3s_extra_args:
+            - --node-label=node.kubernetes.io/friendly-name=tuf-b550
 
     # This workstation, managed over a local connection (no SSH). Hosts the
     # gungan dictation ASR daemons (see roles/asr-servers).
@@ -153,22 +172,8 @@ all:
       vars:
         ansible_connection: ssh
         ansible_shell_type: powershell
-      hosts:
-        # The living-room Windows and media box (Win10 Pro, Wi-Fi only), and
-        # the infra Windows test host: agents drive it over SSH, and it is an
-        # opt-in org runner for Windows-only issues, the way mac-mini is for
-        # macOS. Not a CI gate. Was living-room-pc (.121) until 2026-10-26.
-        windows-media:
-          host_tier: standard
-          ansible_host: 192.168.1.8   # windows-media-lan
-          ansible_user: hughl
-          windows_hostname: WINDOWS-MEDIA
-          # Agents need a signed-in desktop; this brings it back after a reboot
-          # or power cut with no one at the TV.
-          windows_baseline_autologon: true
-          # The "Windows test runner" play's org runner, for the CI topology.
-          ci_pinned_runners:
-            - {name: windows-media, cap: windows}
+      # No Windows PC since 2026-11-20: windows-media became the Linux CI host tuf-b550.
+      hosts: {}
 
     # Nodes whose tier labels Ansible owns. IP matching resolves Pi aliases
     # to their actual Kubernetes names; this group does not install k3s.
@@ -273,6 +278,8 @@ all:
         ms-a2:
         deskslim-2:
         deskslim-1:
+        # sp5100_tco autoloads (/dev/watchdog0, checked 2026-11-20).
+        tuf-b550:
         asus-laptop:
           # Present but not autoloaded on this board (checked 2026-11-13).
           hw_watchdog_module: sp5100_tco
@@ -294,6 +301,7 @@ all:
         ms-a2:
         deskslim-2:
         deskslim-1:
+        tuf-b550:
         asus-laptop:
 
     # NUT (Network UPS Tools) groups. The single CyberPower CP1500PFCLCDa plugs
@@ -320,6 +328,8 @@ all:
         ms-a2:
         deskslim-2:
         deskslim-1:
+        # Outlet not checked (2026-11-20): docs/nut-ups.md.
+        tuf-b550:
         mac-mini:
         # Local connection: sudo needs the become password (ansible/README.md, Secrets).
         cachyos-x8664-main:
@@ -368,24 +378,22 @@ all:
           unity_ci_slots: 3
           unity_ci_full: true
           unity_ci_gate: true
-          # Runners for one personal repo, which cannot use the org's slots: GitHub refused
-          # every .dotfiles-private job from 2026-11-15 once the month's hosted allowance ran
-          # out, and every personal-sites job from 2026-11-19. Lint and unit runs of seconds and
-          # under 1G (gungan-speak: a uv pytest run of about 11 s, hc-496), plus personal-sites'
-          # pnpm install, lint, typecheck and Next.js build (ar-3971, not yet measured), so one
-          # runner on each of two hosts. borrows: the Unity test
-          # slot it runs on; it registers withheld and the governor admits it only while it
-          # lends it that slot, so it adds jobs, never cores (apps/ci-runner-governor,
-          # "Lending"). Forgejo seats need no entry: the renderer puts one on every lendable
-          # slot of a host whose ci_caps carry forgejo.
+          # Runners for personal repos, which cannot use the org's slots and have no hosted
+          # minutes left: short lint, unit and Next.js build runs. One set on each of deskslim-2,
+          # deskslim-1 and tuf-b550, so one host down or cooling does not stall them; not on
+          # ms-a2 while host-headroom.py rates it FULL. The renderer registers <host>-small-<name>-1
+          # and on in the host's ci_small_slice, as many as fit it at the repo kind's p90 job size,
+          # always admitted, so they add jobs, never cores. seats: caps that count for a repo
+          # heavier than the shared repo weight (its Next.js builds).
           ci_repo_runners: &personal_repo_runners
-            - {repo: Kblack0610/.dotfiles-private, slot: dotfiles-private-1, borrows: 1}
-            - {repo: Kblack0610/gungan-speak, slot: gungan-speak-1, borrows: 2}
-            - {repo: Kblack0610/personal-sites, slot: personal-sites-1, borrows: 3}
+            - {repo: Kblack0610/.dotfiles-private, name: dotfiles-private}
+            - {repo: Kblack0610/gungan-speak, name: gungan-speak, seats: 1}
+            - {repo: Kblack0610/personal-sites, name: personal-sites, seats: 1}
         deskslim-1:
           unity_ci_slots: 3
           unity_ci_full: true
           unity_ci_gate: true
+          ci_repo_runners: *personal_repo_runners
         # The workstation, the human's work machine: merge gates only
         # (unity_ci_full false, so no nightly, release or Multi run lands here).
         # The governor reads it from the CI topology for its admit.
@@ -398,24 +406,13 @@ all:
           unity_ci_slots: 2
           unity_ci_full: false
           unity_ci_gate: true
-        # The Ubuntu 24.04 Hyper-V VM on windows-media (Ryzen 9 5900XT, 64G),
-        # added 2026-11-13: 24 vCPUs and 50G static of the host's 32 threads and
-        # 64G. Hyper-V does not pin vCPUs, so Windows and the TV share the cores
-        # by scheduler, with 14G of memory of their own. Three slots of three
-        # cores and 14G each, with three cores and 7G for the guest OS
-        # (docs/unity-ci-hardware.md sizing). Full runs and gates: it is owned and
-        # never preempted. Not unity-wide until it passes the ucp-1521 probes. The
-        # VM is not on the tailnet, so its Forgejo seats register through the LAN
-        # ingress, which follows forge-primary too. Ubuntu: ci-host's apt list.
-        # Setup and the VM itself: docs/windows-machines.md.
-        windows-media-ci:
-          ansible_host: 192.168.1.27   # windows-media-ci (DHCP reservation)
-          host_tier: standard
-          thermal_cap_exempt: a Hyper-V VM; its CPU clocks belong to the Windows host windows-media
-          unity_ci_slots: 3
+        # Joined 2026-11-20 on the PC that held the windows-media-ci Hyper-V VM, so it takes
+        # that VM's place: full runs and gates, and the personal repo runners.
+        # Not unity-wide until it passes the ucp-1521 probes.
+        tuf-b550:
+          unity_ci_slots: 4
           unity_ci_full: true
           unity_ci_gate: true
-          forgejo_runner_instance: https://git.kblab.me
           ci_repo_runners: *personal_repo_runners
 
 
@@ -460,17 +457,19 @@ all:
     # jobs. A host's own slots of a kind need that kind here; a cloud host takes no
     # light or heavy, so a small job never powers a paid host. Drop a cap and
     # re-apply to take it off every slot of the host.
-    # Forgejo seats per lendable slot are not set here: render-ci-topology.py registers
-    # floor(slot CPUs / MIN_JOB_CORES) and the governor admits as many as a measured weight
-    # fits (ci-runner-governor config.json "weights"). Repo seats stay one per slot.
     # ci_local_seats: how many local test runs (no forge, no runner) the governor leases at once
     # on a LAN Unity host; rendered as the host's "local_seats", never as slots.
-    # ci_seat_kinds: the GitHub kinds (light, heavy; each in ci_caps) that also get seats on
-    # the host's lendable slots, so several small jobs share one lent slot; the host's Unity slots
-    # then drop those kinds from their caps, so a seat is a small job's one path there. Every LAN
-    # host that takes light or heavy sets it (hc-693): seats were not the OOM source (24h to
-    # 2026-11-19: 6, 5 and 5 kills on deskslim-2, ms-a2 and deskslim-1 with none, 3 on
-    # windows-media-ci with seats). Roll back one host: drop its key, re-render, apply.
+    # ci_small_slice: {cpus, memory}: the host's standing small-job slice (plan
+    # why-is-most-of-dynamic-cosmos P2). Its light, heavy, Forgejo and repo seats are always
+    # admitted, so a small job starts at once, and no Unity slot of the host takes a small kind. They run in ci-small.slice
+    # (roles/ci-host-budget): any of the Unity CPUs (ci_unity_cpus, else ci_cpus), at most `cpus`
+    # of them (CPUQuota) and `memory` (MemoryMax), at the same CPUWeight as Unity, so the slice
+    # keeps its share when every Unity slot is busy. Its memory is part of ci_memory_max, which
+    # ci_unity_memory_max fills on its own, so the whole CI budget bounds a Unity worst case plus
+    # the slice (kept shared, ask hyXNOV: ms-a2 and tuf-b550 read FULL). Each kind registers as many seats as fit it at all.vars
+    # ci_small_job_size. Sized at 6 CPUs and 8G on every pool host: under one Unity slot, on
+    # cores idle at baseline (163 of 248 free, 2026-11-20). Roll back one host: see
+    # docs/runbooks/unity-ci-host.md "Standing slice".
     ci_hosts:
       hosts:
         # ms-a2: 16 cores / 32 threads, SMT siblings n and n+16 (sysfs,
@@ -486,7 +485,7 @@ all:
         # trial since 2026-11-19); the lists below size them rather than fence them.
         ms-a2:
           ci_caps: [light, heavy, unity, unity-build, forgejo]
-          ci_seat_kinds: [light, heavy]
+          ci_small_slice: {cpus: 6, memory: 8G}
           ci_cpus: 2-15,18-31
           ci_unity_slot_share: true
           ci_memory_max: 70G
@@ -497,12 +496,11 @@ all:
           k3s_cpus: 0-1,16-17
         # deskslim-2: 12 cores / 24 threads, SMT siblings n and n+12, 60G. Cores
         # 0-1 are k3s and the OS; three Unity slots of 14G on cores 2-11, slot 3 with
-        # four cores, which leaves 12G for the host and k3s. Its light and heavy jobs run
-        # on seats (ci_seat_kinds), and the governor lends its Unity slots to those, to
-        # Forgejo and to the personal repo runners.
+        # four cores, which leaves 12G for the host and k3s. Its light, heavy, Forgejo and
+        # personal repo jobs run on the standing seats of its ci_small_slice.
         deskslim-2:
           ci_caps: [light, heavy, unity, forgejo]
-          ci_seat_kinds: [light, heavy]
+          ci_small_slice: {cpus: 6, memory: 8G}
           ci_cpus: 2-11,14-23
           ci_memory_max: 48G
           ci_unity_cpus: 2-11,14-23
@@ -514,7 +512,7 @@ all:
         # and n+12, lscpu 2026-11-18, 61G), so the same slots and caps.
         deskslim-1:
           ci_caps: [light, heavy, unity, forgejo]
-          ci_seat_kinds: [light, heavy]
+          ci_small_slice: {cpus: 6, memory: 8G}
           ci_cpus: 2-11,14-23
           ci_memory_max: 48G
           ci_unity_cpus: 2-11,14-23
@@ -541,23 +539,26 @@ all:
           # this host's hot and idle checks (apps/ci-runner-governor, "Local seats"). 3 is
           # today's 2 open slots plus the room slot slots.sh opens on an idle host.
           ci_local_seats: 3
-        # windows-media-ci, the Hyper-V VM: 12 vcores / 24 threads, SMT siblings
-        # are n and n+1 (lscpu), 49G. Cores 0-2 (CPUs 0-5) stay with the guest OS,
-        # docker and the runner agents; each of the three Unity slots gets three
-        # cores and stops at 14G.
-        # No temperature: a VM has no k10temp, so the governor admits on
-        # idle, PSI and memory alone.
-        windows-media-ci:
-          # No heavy: a Hyper-V VM on a Windows 10 host, which refuses nested virtualization
-          # ("this platform does not support nested virtualization", 2026-11-18), so it has no /dev/kvm.
-          ci_caps: [light, unity, forgejo]
-          ci_seat_kinds: [light]
-          ci_cpus: 6-23
-          ci_memory_max: 42G
-          ci_unity_cpus: 6-23
-          ci_unity_slot_cpus: ["6-11", "12-17", "18-23"]
-          ci_unity_memory_max: 42G
+        # tuf-b550: Ryzen 9 5900XT, 16 cores / 32 threads, SMT siblings n and n+16
+        # (lscpu -e, 2026-11-20), 62G, /dev/kvm from kvm_amd (checked 2026-11-20,
+        # so heavy seats). Cores 0-1 are k3s and the OS; ms-a2's slot layout
+        # on cores 2-15 (slots 1-2 three cores, 3-4 four). Each slot stops at 14G, the
+        # deskslims' cap: 7-day peaks to 2026-11-20 are 13.9G at a 14G cap (deskslim-1) and
+        # p99 10.1-10.5G per slot. Four caps add up to 56G, over the 50G shared Unity cap,
+        # which keeps 12G for the host and k3s as on deskslim-2 (the slots may add up to
+        # more, roles/ci-host-budget): deskslim-2's three slots together peaked at 31.5G,
+        # so four at that rate are about 42G. Provisional, medium confidence: revisit if a
+        # job dies on the 50G cap, or MemAvailable on the host drops under 6G.
+        tuf-b550:
+          ci_caps: [light, heavy, unity, forgejo]
+          ci_small_slice: {cpus: 6, memory: 8G}
+          ci_cpus: 2-15,18-31
+          ci_memory_max: 50G
+          ci_unity_cpus: 2-15,18-31
+          ci_unity_slot_cpus: ["2-4,18-20", "5-7,21-23", "8-11,24-27", "12-15,28-31"]
+          ci_unity_memory_max: 50G
           ci_unity_slot_memory_max: 14G
+          k3s_cpus: 0-1,16-17
 
     # Nodes that run the game servers (apps/playground-server pins to the
     # kblab.me/game-server label, roles/node-labels sets it). Each host keeps
@@ -710,10 +711,6 @@ all:
           fleet_pulse_group: homelab
           fleet_pulse_push: true
           fleet_pulse_display: main
-        windows-media:
-          fleet_pulse_group: homelab
-          fleet_pulse_push: true
-          fleet_pulse_display: win
         mac-mini:
           fleet_pulse_group: homelab   # node_exporter from the node-exporter-mac role
         audio-living:   # a room that is up but silent is the failure that matters here
@@ -796,9 +793,14 @@ all:
         ms-a2:
           thermal_cap_boost: true
           thermal_cap_max_freq_khz: 3200000
-        # razer-laptop (acpi-cpufreq, a global boost switch), deskslim-2
-        # (amd-pstate-epp) and the workstation have no platform_profile, no
-        # writable RAPL limit and no charge threshold: the group default alone.
+        # AMD 5900XT, amd-pstate-epp on kernel 7.3.3: the group default, boost off.
+        # Boost cannot be turned back on ("Cannot enable BOOST" on the global and
+        # per-policy switch, checked 2026-11-20), so boost on under a ceiling, as on
+        # ms-a2, is not available.
+        tuf-b550:
+        # razer-laptop (acpi-cpufreq, a global boost switch), deskslim-2 (amd-pstate-epp)
+        # and the workstation have no platform_profile, no writable RAPL limit and no
+        # charge threshold: the group default alone.
 
     # Whole-house audio: one host per room, each a snapclient of the snapserver
     # in apps/snapcast. See ansible/roles/audio-endpoint/README.md.

@@ -4,8 +4,10 @@
 # why: docs/mac-machines.md#build-tree-prune. Tests: test-ci-tree-prune.sh beside this file.
 #
 # A tree is in use when a process names it or works inside it, or, while the runner has a
-# job, when it was written in the last IDLE_MINUTES. Only trees not in use are touched. The
-# checkout, whose .git is a directory, is the job's workspace and is never touched.
+# job, when it was written in the last IDLE_MINUTES. Only trees not in use are touched. A tree
+# is a worktree beside the checkout (<checkout>-<game>, its .git a file) or a release job's
+# clone in the checkout's Builds/release-tree/<job>. The checkout, whose .git is a directory,
+# is the job's workspace and is never touched.
 set -u
 
 RUNNERS=${RUNNERS:-"$HOME/actions-runner-playground"}
@@ -65,11 +67,14 @@ trap 'rm -f "$idle"' EXIT
 for runner in $RUNNERS; do
     [ -d "$runner/_work" ] || continue
     # A removal this script did not finish.
-    for trash in "$runner"/_work/*/.pruned-*; do
+    for trash in "$runner"/_work/*/.pruned-* "$runner"/_work/*/*/Builds/release-tree/.pruned-*; do
         [ -e "$trash" ] && rm -rf -- "$trash"
     done
-    for tree in "$runner"/_work/*/*; do
-        [ -f "$tree/.git" ] || continue
+    for tree in "$runner"/_work/*/* "$runner"/_work/*/*/Builds/release-tree/*; do
+        case $tree in
+            */Builds/release-tree/*) [ -e "$tree/.git" ] || continue ;;
+            *) [ -f "$tree/.git" ] || continue ;;
+        esac
         used=$(last_used "$tree")
         keep "$tree" "$used" && continue
         if [ $((now - used)) -ge $((TREE_DAYS * 86400)) ]; then

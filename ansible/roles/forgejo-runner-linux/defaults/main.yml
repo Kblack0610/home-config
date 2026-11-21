@@ -1,8 +1,7 @@
 ---
-# One Forgejo seat per lendable Unity slot (the topology's slots with forge "forgejo", one
-# per Unity test slot of a host whose ci_caps carry forgejo). A seat has no cores of its own:
-# its supervisor (files/forgejo-seat.py) runs `forgejo-runner one-job` only while
-# ci-runner-governor lends it the slot it borrows, in that slot's slice. Called once per
+# One standing Forgejo seat per share of the host's small-job slice (the topology's slots with
+# forge "forgejo"). A seat's supervisor (files/forgejo-seat.py) runs `forgejo-runner one-job`
+# only while ci-runner-governor's lease says forgejo, in the slice. Called once per
 # seat from the CI play in playbooks/site.yml with forgejo_runner_name, forgejo_runner_home,
 # forgejo_runner_slot and forgejo_runner_slice set.
 forgejo_runner_version: "13.2.1"
@@ -29,7 +28,7 @@ forgejo_runner_labels:
   - "linux-amd64:host"
   # Host-mode labels for the personal repos' `runs-on: [self-hosted, light]` and
   # `[self-hosted, linux, x64, light]` jobs (glowing-seeking-lemur P1): a seat serves them as it
-  # served GitHub's, in the borrowed slot, so they never wait out the Unity queue. Forgejo
+  # served GitHub's, in the small-job slice, so they never wait out the Unity queue. Forgejo
   # matches a job when the seat carries every label it asks for.
   - "self-hosted:host"
   - "linux:host"

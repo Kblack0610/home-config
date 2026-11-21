@@ -70,8 +70,10 @@ spec:
           labels:
             severity: critical
             fleet: fix
+            system: ci
             category: git-mirror
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/forgejo/README.md
             summary: "Mirror {{ $labels.repo }} is stuck behind an orphaned git lock"
             description: >-
               {{ $labels.repo }} ({{ $labels.kind }}) is past the sync Forgejo
@@ -102,8 +104,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: ci
             category: git-mirror
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/forgejo/README.md
             summary: "Mirror overdue: {{ $labels.repo }} ({{ $labels.kind }})"
             description: >-
               Forgejo has not completed a sync of {{ $labels.repo }} within 3x
@@ -120,8 +124,10 @@ spec:
           labels:
             severity: critical
             fleet: fix
+            system: ci
             category: git-mirror
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/forgejo/README.md
             summary: "Mirror badly stuck: {{ $labels.repo }} ({{ $labels.kind }})"
             description: >-
               {{ $labels.repo }} is more than 8x its sync budget overdue (~2h+
@@ -138,8 +144,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: ci
             category: git-maintenance
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/forgejo/README.md
             summary: "Stale git lock in {{ $labels.repo }}"
             description: >-
               {{ $labels.repo }} holds {{ $value | printf "%.0f" }} git *.lock
@@ -162,8 +170,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: ci
             category: ci
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/forgejo-actions-recovery.md
             summary: "No Forgejo Actions run for {{ $labels.repo }} in {{ $value | printf \"%.0f\" }} days"
             description: >-
               {{ $labels.repo }} has a live mirror but has produced no Actions
@@ -182,8 +192,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: ci
             category: ci
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/forgejo-actions-recovery.md
             summary: "{{ $labels.repo }} {{ $labels.job_name }} has waited {{ $value | humanizeDuration }} on Forgejo for labels {{ $labels.labels }}"
             description: >-
               A Forgejo Actions job has waited over 10 minutes for a seat. Check
@@ -217,8 +229,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: ci
             category: git-maintenance
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/forgejo/README.md
             summary: "git gc is failing in {{ $labels.repo }}"
             description: >-
               objects/info/gc.log exists in {{ $labels.repo }}: git's own
@@ -233,8 +247,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: ci
             category: git-mirror
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/forgejo/README.md
             summary: "Push mirror failing: {{ $labels.repo }} -> {{ $labels.remote_name }}"
             description: >-
               push_mirror.last_error is set for {{ $labels.repo }} remote
@@ -252,8 +268,10 @@ spec:
           labels:
             severity: critical
             fleet: fix
+            system: ci
             category: git-integrity
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/gitops.md
             summary: "{{ $labels.repo }} {{ $labels.branch }} moved back to an older commit"
             description: >-
               {{ $value }} update(s) in the last 24h set {{ $labels.repo }}
@@ -269,8 +287,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: ci
             category: git-integrity
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/gitops.md
             summary: "{{ $labels.repo }} remote {{ $labels.remote }} can reset its branches"
             description: >-
               Remote {{ $labels.remote }} in {{ $labels.repo }} is pushed to and
@@ -285,8 +305,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: ci
             category: git-integrity
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/gitops.md
             summary: "{{ $labels.repo }} {{ $labels.branch }} has no reflog"
             description: >-
               Without logs/refs/heads/{{ $labels.branch }} a rewind of this
@@ -304,8 +326,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: telemetry
             category: monitoring
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/forgejo/README.md
             summary: "forgejo-mirror-exporter is not being scraped"
             description: >-
               With this exporter down every mirror alert above goes quiet, which
@@ -318,8 +342,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: telemetry
             category: monitoring
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/forgejo/README.md
             summary: "forgejo-mirror-exporter cannot read its {{ $labels.source }} source"
             description: >-
               The {{ $labels.source }} source has failed to refresh for 30m. It

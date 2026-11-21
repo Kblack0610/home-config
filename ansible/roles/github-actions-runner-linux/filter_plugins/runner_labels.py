@@ -7,7 +7,7 @@ and unity-gate). The role reads the runner, and when "change" is true, PUTs "lab
 """
 
 
-def runner_labels_plan(runner, desired, governed=(), withheld=None, withheld_all=(), kept=()):
+def runner_labels_plan(runner, desired, governed=(), withheld=None, withheld_all=()):
     """{"change": whether runner (one row of GitHub's runners list) needs a PUT, "labels": the
     custom labels it should carry}. GitHub compares labels without regard to case.
 
@@ -19,8 +19,6 @@ def runner_labels_plan(runner, desired, governed=(), withheld=None, withheld_all
     plus withheld, the one the governor gives back on admit for this slot's kind. So an
     apply never admits a slot the governor holds, and the governor's admit still finds its
     own withheld label to drop.
-    kept: labels only the governor sets (unity-lent, its lend mark): a runner carrying one
-    keeps it, so an apply never takes back a slot the governor lent to a seat.
     """
     live = runner.get("labels", [])
     readonly = {l["name"].lower() for l in live if l.get("type") == "read-only"}
@@ -30,8 +28,7 @@ def runner_labels_plan(runner, desired, governed=(), withheld=None, withheld_all
     if held and not withheld:
         raise ValueError(f"{runner.get('name')} is withheld but no withheld label was given for it")
     want, seen = [], set()
-    marks = [l["name"] for l in live if l.get("type") != "read-only" and l["name"].lower() in {k.lower() for k in kept}]
-    for label in list(desired) + ([withheld] if held else []) + marks:
+    for label in list(desired) + ([withheld] if held else []):
         key = label.lower()
         if key in readonly or key in seen or (held and key in gov):
             continue

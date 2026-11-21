@@ -92,10 +92,16 @@
 
 # The asset-library LFS store the release trees share (ASSET_LIBRARY_LFS_STORE),
 # from the workstation's: tasks/lfs-store.yml. Not on the workstation itself,
-# whose runners pull next to the source store.
+# whose runners pull next to the source store. --tags lfs-store runs this alone: the
+# workstation's lfs-store agentctl job does every night, so a pin bump's new objects
+# reach each host before the next day's gates fetch them through the tunnel.
 - name: Seed the asset-library LFS store
-  ansible.builtin.include_tasks: lfs-store.yml
+  ansible.builtin.include_tasks:
+    file: lfs-store.yml
+    apply:
+      tags: [lfs-store]
   when: ansible_connection | default('ssh') != 'local'
+  tags: [lfs-store]
 
 # Editor images: load a missing one from the workstation's docker, or pull it on
 # a host with unity_ci_images_pull (off the LAN, where the pull is sound). The host's own

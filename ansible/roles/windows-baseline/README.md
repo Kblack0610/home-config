@@ -1,6 +1,6 @@
 # windows-baseline
 
-Lean baseline for a Windows PC reached over Windows OpenSSH. Written for `windows-media` (Win10 Pro, the living-room Windows and media box, also the infra Windows test host), and kept generic: every app, service, task and registry value it touches is a list in `defaults/main.yml`, so another Windows host overrides data, not tasks.
+Lean baseline for a Windows PC reached over Windows OpenSSH. Written for `windows-media` (Win10 Pro, the living-room Windows and media box, Linux host `tuf-b550` since 2026-11-20), and kept generic: every app, service, task and registry value it touches is a list in `defaults/main.yml`, so another Windows host overrides data, not tasks.
 
 ## What it does
 
@@ -11,16 +11,16 @@ Lean baseline for a Windows PC reached over Windows OpenSSH. Written for `window
 5. Removes autostart nags (Logi Download Assistant, the OneDrive setup stubs).
 6. Performance: High performance plan, no sleep on AC, Wi-Fi at max performance, network cards never powered off (`PnPCapabilities=24`), hibernation off (also disables Fast Startup), Game Mode on, hardware-accelerated GPU scheduling on, background Game DVR capture off.
 7. Cleanup: temp files older than a week, the Windows Update download cache, superseded component versions. Reported as unchanged, so a converged run reads `changed=0`.
-8. Computer name: `windows_hostname` from the inventory (`WINDOWS-MEDIA`), so Windows' own name matches the fleet name. It takes effect at the next reboot; the role never reboots.
+8. Computer name: `windows_hostname` from the inventory, so Windows' own name matches the fleet name. It takes effect at the next reboot; the role never reboots.
 9. Automatic sign-in, opt-in (`windows_baseline_autologon`, tag `autologon`): unhides the netplwiz checkbox that Windows Hello sign-in hides, and asserts `AutoAdminLogon=1`. The password is typed once at the PC, never by the role. Steps: `docs/windows-machines.md`, "Unattended restart".
 
 ## Apply
 
 ```bash
 cd ansible && ansible-galaxy collection install -r requirements.yml -p ./collections
-ansible-playbook playbooks/site.yml --limit windows-media --check --diff
-ansible-playbook playbooks/site.yml --limit windows-media
-ansible windows-media -m ansible.windows.win_reboot -a "pre_reboot_delay=60"   # first apply only
+ansible-playbook playbooks/site.yml --limit <name> --check --diff
+ansible-playbook playbooks/site.yml --limit <name>
+ansible <name> -m ansible.windows.win_reboot -a "pre_reboot_delay=60"   # first apply only
 ```
 
 GPU scheduling and the network-card power setting take effect after a reboot. `win_reboot` waits for the host to answer again instead of sleeping.

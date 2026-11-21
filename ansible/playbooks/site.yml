@@ -56,22 +56,6 @@
     - role: ssh-client-inventory
       tags: [ssh-aliases]
 
-- name: Unity CI host monitoring (node_exporter, windows-media-ci)
-  # So ci-runner-governor and cc:host_* read the VM's idle, PSI and memory: it is
-  # not a k3s node, so the DaemonSet does not scrape it; Prometheus reaches it
-  # through standalone-nodes (apps/monitoring/external-standalone-nodes.yaml).
-  #   ansible-playbook playbooks/site.yml --limit windows-media-ci --tags monitoring
-  # The textfile directory is the one roles/ci-runner-cpu writes ci_runner.prom to,
-  # which on the k3s CI hosts the DaemonSet's node-exporter reads.
-  hosts: windows-media-ci
-  become: true
-  gather_facts: true
-  roles:
-    - role: node-exporter-linux
-      node_exporter_linux_textfile_dir: /var/lib/node-exporter-textfile
-      node_exporter_linux_textfile_owner: "{{ k3s_textfile_owner }}"
-      tags: [monitoring, unity-ci]
-
 - name: Cloud Unity CI host monitoring over the tailnet
   hosts: unity_ci_runners
   become: true
@@ -226,8 +210,8 @@
 # Playwright cache; a job hook empties a non-Unity workspace around every job, and a
 # light job's first step parks a warm Unity tree's untracked state (roles/ci-host).
 # Tokens come from the control node's gh (admin:org), so there is no standing PAT.
-# Dropping a Unity slot leaves its runner: scripts/unity-ci-runner-remove.sh. Dropping a
-# ci_repo_runners entry too: stop its unit, delete it in the repo's runner settings, rm its dir.
+# Dropping a Unity slot leaves its runner: scripts/unity-ci-runner-remove.sh. A seat dropped
+# from the topology (a ci_repo_runners entry, a light or heavy seat) is retired by the next apply.
 - name: CI runners (Unity slots and the seats that borrow them)
   hosts: unity_ci_runners
   become: true
@@ -246,8 +230,12 @@
       if part | trim %}{% set ab = (part | trim).split('-') %}{% set n.c = n.c + (ab[-1] | int)
       - (ab[0] | int) + 1 %}{% endfor %}{{ [1, (n.c / (1 if ci_unity_slot_cpus | length
       else unity_ci_slots)) | int] | max }}
-    # The Unity slot number a seat borrows ("borrows" is that slot's runner name).
-    ci_seat_slot: "{{ ci_seat.borrows | regex_replace('^' ~ inventory_hostname ~ '-unity-pool-', '') | int }}"
+    # A seat's slice and CPU count: a standing seat's ("slice", inventory ci_small_slice) are the
+    # host's small-job slice and its kind's p90 job rounded up ("job_cpus"), since the slice runs
+    # many seats at once (turbo takes CI_SLOT_CPUS as --concurrency, ar-2435). A standing seat
+    # registers admitted and the governor never moves its labels.
+    ci_seat_slice: "{{ ci_small_slice_name }}"
+    ci_seat_cpus: "{{ ci_seat.job_cpus | default(ci_seat.cpus) | float | round(0, 'ceil') | int }}"
   roles:
     # What the host's ci_caps need (roles/ci-host). Its own tags pick a part:
     # --tags unity-ci-host refreshes the asset-library copy and editor images
@@ -255,57 +243,47 @@
     - role: ci-host
       tags: [runner, ci]
   tasks:
-    # A personal repo cannot see org runners, so each ci_repo_runners entry
-    # registers against its one repo (inventory.yml says why), with the
+    # A personal repo cannot see org runners, so each ci_repo_runners seat (the
+    # topology's, standing seats) registers against its one repo (inventory.yml says why), with the
     # workstation's gh as the repo owner. It runs as linux-ci like the Forgejo
     # seats: the role puts every runner user in the docker group, which is
     # root on the host, so a second user would isolate nothing. Its jobs use
     # read-only tokens and no secret but personal-sites' read-scoped Forgejo npm
     # registry token, and the job-completed hook empties the
     # workspace as soon as a job ends, so no private checkout stays on disk.
-    # A seat (ci_seats): it has no slot of its own and runs on the Unity test slot it
-    # borrows, in that slot's slice and with its CPU count, so it adds jobs, never cores. It
-    # registers withheld, and ci-runner-governor admits it only while it lends it that slot
-    # (apps/ci-runner-governor, "Lending").
+    # A seat (ci_seats) is a standing seat: it runs in the host's small-job slice, registered
+    # admitted, and nothing withholds it.
     - name: Register the personal repo runner seats
       ansible.builtin.include_role:
         name: github-actions-runner-linux
         apply:
           tags: [runner, ci, linux-ci]
-      loop: "{{ ci_repo_runners | default([]) }}"
+      loop: "{{ ci_seats | selectattr('repo', 'defined') | list }}"
       loop_control:
-        loop_var: ci_repo
-        label: "{{ ci_repo.repo }} {{ ci_repo.slot }}"
+        loop_var: ci_seat
+        label: "{{ ci_seat.name }}"
       vars:
-        unity_slot: "{{ ci_repo.borrows }}"
         gh_runner_scope: repo
-        gh_runner_owner: "{{ ci_repo.repo.split('/')[0] }}"
-        gh_runner_repo: "{{ ci_repo.repo.split('/')[1] }}"
+        gh_runner_owner: "{{ ci_seat.repo.split('/')[0] }}"
+        gh_runner_repo: "{{ ci_seat.repo.split('/')[1] }}"
         gh_runner_token_source: gh
         gh_runner_install_packages: false
         gh_runner_user: linux-ci
         gh_runner_group: linux-ci
         gh_runner_user_home: "{{ linux_ci_user_home }}"
-        gh_runner_home: "{{ linux_ci_user_home }}/{{ ci_repo.slot }}"
-        gh_runner_name: "{{ inventory_hostname }}-{{ ci_repo.slot }}"
-        gh_runner_labels: "{{ ['self-hosted', 'linux', 'x64'] + ci_slot_caps[gh_runner_name] }}"
-        # The governor's seat labels (inventory ci_labels.seat_withheld).
-        gh_runner_governed_labels: [light]
-        gh_runner_withheld_labels: ["{{ ci_labels.seat_withheld }}"]
-        gh_runner_withheld_label: "{{ ci_labels.seat_withheld }}"
-        gh_runner_register_withheld: true
-        gh_runner_slice: "{{ unity_slot_slice }}"
+        gh_runner_home: "{{ linux_ci_user_home }}/{{ ci_seat.name | regex_replace('^' ~ inventory_hostname ~ '-', '') }}"
+        gh_runner_name: "{{ ci_seat.name }}"
+        gh_runner_labels: "{{ ['self-hosted', 'linux', 'x64'] + ci_seat.caps }}"
+        gh_runner_slice: "{{ ci_seat_slice }}"
         gh_runner_env:
-          HOME: "{{ linux_ci_user_home }}/{{ ci_repo.slot }}"
+          HOME: "{{ linux_ci_user_home }}/{{ ci_seat.name | regex_replace('^' ~ inventory_hostname ~ '-', '') }}"
           ACTIONS_RUNNER_HOOK_JOB_STARTED: "{{ linux_ci_job_started_hook }}"
           ACTIONS_RUNNER_HOOK_JOB_COMPLETED: "{{ linux_ci_job_completed_hook }}"
-          CI_SLOT_CPUS: "{{ unity_slot_cpus }}"
+          CI_SLOT_CPUS: "{{ ci_seat_cpus }}"
       tags: [runner, ci, linux-ci]
 
-    # The light and heavy seats (ci_seat_kinds): org runners of one kind on a borrowed Unity slot,
-    # as the repo seats are on a personal repo. They register withheld and carry the kind's label
-    # only while the governor has lent them the slot, so a lent slot runs as many small jobs as
-    # the kind's measured weight fits (apps/ci-runner-governor, pack()).
+    # The light and heavy seats: org runners of one kind, as the repo seats are on a personal
+    # repo. A standing seat (ci_small_slice) carries its kind's label always.
     - name: Register the light and heavy seats
       ansible.builtin.include_role:
         name: github-actions-runner-linux
@@ -316,7 +294,6 @@
         loop_var: ci_seat
         label: "{{ ci_seat.name }}"
       vars:
-        unity_slot: "{{ ci_seat_slot }}"
         gh_runner_scope: org
         gh_runner_token_source: gh
         gh_runner_install_packages: false
@@ -326,17 +303,12 @@
         gh_runner_home: "{{ linux_ci_user_home }}/{{ ci_seat.name | regex_replace('^' ~ inventory_hostname ~ '-', '') }}"
         gh_runner_name: "{{ ci_seat.name }}"
         gh_runner_labels: "{{ ['self-hosted', 'linux', 'x64'] + ci_seat.caps }}"
-        # The governor's seat labels (inventory ci_labels.seat_withheld), one for every seat kind.
-        gh_runner_governed_labels: "{{ ci_seat.caps }}"
-        gh_runner_withheld_labels: ["{{ ci_labels.seat_withheld }}"]
-        gh_runner_withheld_label: "{{ ci_labels.seat_withheld }}"
-        gh_runner_register_withheld: true
-        gh_runner_slice: "{{ unity_slot_slice }}"
+        gh_runner_slice: "{{ ci_seat_slice }}"
         gh_runner_env:
           HOME: "{{ linux_ci_user_home }}/{{ ci_seat.name | regex_replace('^' ~ inventory_hostname ~ '-', '') }}"
           ACTIONS_RUNNER_HOOK_JOB_STARTED: "{{ linux_ci_job_started_hook }}"
           ACTIONS_RUNNER_HOOK_JOB_COMPLETED: "{{ linux_ci_job_completed_hook }}"
-          CI_SLOT_CPUS: "{{ unity_slot_cpus }}"
+          CI_SLOT_CPUS: "{{ ci_seat_cpus }}"
       tags: [runner, ci, linux-ci]
 
     # Every host in the play, so one that loses its seats loses their units too.
@@ -351,9 +323,23 @@
         forgejo_runner_user_home: "{{ linux_ci_user_home }}"
       tags: [runner, ci, forgejo-ci]
 
-    # The Forgejo seats: one on each lendable Unity slot (floor(cpus / MIN_JOB_CORES) seats) of a host whose ci_caps carry
-    # forgejo (scripts/render-ci-topology.py). A seat's supervisor runs a job only while the governor lends
-    # it the slot, so a down governor stops Forgejo CI and leaves GitHub CI running.
+    # Every host in the play too, for the GitHub seats under the linux-ci home: a seat dropped
+    # from ci_seats loses its unit, its registration (the control node's gh) and its dir.
+    - name: Retire the GitHub seats this host no longer runs
+      ansible.builtin.include_role:
+        name: github-actions-runner-linux
+        tasks_from: retire
+        apply:
+          tags: [runner, ci, linux-ci]
+      vars:
+        gh_runner_keep_names: "{{ ci_seats | rejectattr('forge', 'defined') | map(attribute='name') | list }}"
+        gh_runner_keep_dirs: "{{ ci_seats | rejectattr('forge', 'defined') | map(attribute='name') | map('regex_replace', '^' ~ inventory_hostname ~ '-', linux_ci_user_home ~ '/') | list }}"
+        gh_runner_user_home: "{{ linux_ci_user_home }}"
+      tags: [runner, ci, linux-ci]
+
+    # The Forgejo seats: the standing ones of a host's small-job slice
+    # (scripts/render-ci-topology.py). A seat's supervisor runs a job only while the governor's
+    # lease says forgejo, a standing seat's always, so a down governor stops Forgejo CI and leaves GitHub CI running.
     - name: Register the Forgejo seats
       ansible.builtin.include_role:
         name: forgejo-runner-linux
@@ -364,17 +350,16 @@
         loop_var: ci_seat
         label: "{{ ci_seat.name }}"
       vars:
-        unity_slot: "{{ ci_seat_slot }}"
         forgejo_runner_name: "{{ ci_seat.name }}"
         forgejo_runner_home: "{{ linux_ci_user_home }}/{{ ci_seat.name | regex_replace('^' ~ inventory_hostname ~ '-', '') }}"
         forgejo_runner_user_home: "{{ linux_ci_user_home }}"
-        forgejo_runner_slot: "{{ ci_seat.borrows }}"
-        forgejo_runner_slice: "{{ unity_slot_slice }}"
+        forgejo_runner_slot: "{{ ci_small_slice_name }}"
+        forgejo_runner_slice: "{{ ci_seat_slice }}"
       tags: [runner, ci, forgejo-ci]
 
     # After the seats, whose roles create the linux-ci user. Playground jobs clone
-    # their submodules over ssh (windows-media-ci's first light jobs failed
-    # "Host key verification failed" without this).
+    # their submodules over ssh (the first light jobs on a new host failed
+    # "Host key verification failed" without this, 2026-11-13).
     - name: Trust GitHub's host keys for the linux-ci user
       ansible.builtin.import_role:
         name: ci-host
@@ -456,8 +441,8 @@
         # unity-gate: the non-preemptible hosts merge gates may take (unity_ci_gate, default false);
         # a Spot host leaves it off, so a reclaim never kills a gate (playground ucp-1778).
         # The slot's caps come from topology.json (ci_slot_caps): unity-build on a build slot,
-        # unity plus the host's light and heavy on a test slot, less the kinds its seats serve
-        # (ci_seat_kinds; scripts/render-ci-topology.py HOST_CAPS).
+        # unity plus the host's light and heavy on a test slot, less the kinds the
+        # host's standing seats serve (ci_small_slice; scripts/render-ci-topology.py HOST_CAPS).
         gh_runner_labels: "{{ [ 'self-hosted', 'linux', 'x64', 'host-' ~ inventory_hostname ] + ci_slot_caps[gh_runner_name] + ([] if unity_slot in unity_ci_slot_groups | default({}) else ([ 'unity-full' ] if unity_ci_full | default(true) else []) + ([ 'unity-wide' ] if unity_ci_wide | default(false) else []) + ([ 'unity-gate' ] if unity_ci_gate | default(false) else [])) + ([ 'unity' ] + ([ 'unity-full' ] if unity_ci_full | default(true) else []) if 'unity-wide' in ci_slot_caps[gh_runner_name] else []) + ([ 'lan' ] if unity_ci_lan | default(true) else []) + ([ 'hd-library' ] if unity_ci_hd_library | default(unity_ci_lan | default(true)) else []) + (unity_ci_slot_labels | default({})).get(unity_slot, []) }}"
         # ci-runner-governor's admit labels and withheld labels (inventory ci_labels, the
         # vocabulary the governor reads from topology.json), plus the shared caps a slot takes
@@ -465,8 +450,10 @@
         gh_runner_governed_labels: "{{ [ ci_labels.pool, ci_labels.full, ci_labels.build, 'light', 'heavy' ] + ([ ci_labels.wide ] if ci_labels.wide in ci_slot_caps[gh_runner_name] else []) }}"
         gh_runner_withheld_labels: ["{{ ci_labels.withheld }}", "{{ ci_labels.build_withheld }}"]
         gh_runner_withheld_label: "{{ ci_labels.build_withheld if unity_slot in unity_ci_slot_groups | default({}) else ci_labels.withheld }}"
-        # The governor's lend mark: an apply never takes back a slot it lent to a seat.
-        gh_runner_kept_labels: ["{{ ci_labels.lent }}"]
+        # A new slot registers withheld and runs only once the governor admits it, one per
+        # cycle on the host's readings: admitted at registration, deskslim-1's slots took 5
+        # PlayMode shards while its first play still ran, and failed them all (ar-4100).
+        gh_runner_register_withheld: true
         gh_runner_slice: "{{ unity_slot_slice }}"
         # UNITY_CACHE_SERVER only where the host runs an Accelerator (unity_ci_accelerator,
         # roles/ci-host), so the other hosts' env, and their slots, are unchanged.
@@ -1025,19 +1012,6 @@
   roles:
     - role: windows-exporter
       tags: [windows, monitoring]
-
-# The opt-in Windows test runner (org-scoped, labels self-hosted/Windows/X64/
-# host-windows-media). Not a CI gate and not the Unity pool: a job lands here
-# only with `runs-on: [self-hosted, windows]`. It runs at logon in the desktop
-# session, so it is offline while nobody is logged on. Registration needs
-# `gh` with admin:org on the control node, like the Unity pool.
-- name: Windows test runner (windows-media only)
-  hosts: windows-media
-  gather_facts: false
-  roles:
-    - role: github-actions-runner-windows
-      tags: [windows, runner]
-
 # The ssh keys that may log in, from roles/authorized-keys (additive). Every
 # Linux node, the Pis included, so cluster admin never hangs on one machine.
 #   ansible-playbook playbooks/site.yml --limit linux_bare_metal:pi_k3s:adguard --tags authorized-keys

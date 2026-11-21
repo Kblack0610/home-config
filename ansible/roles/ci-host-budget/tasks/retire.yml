@@ -5,7 +5,7 @@
 # (razer-laptop, an agent host: 6G and twelve CPUs for all its docker, 2026-11-18).
 - name: Name the CI slices
   ansible.builtin.set_fact:
-    _ci_retire_patterns: "{{ [ci_slice, ci_unity_slice, ci_unity_slot_slice_prefix ~ '*.slice']
+    _ci_retire_patterns: "{{ [ci_slice, ci_unity_slice, ci_unity_slot_slice_prefix ~ '*.slice', ci_small_slice_name]
                              + ci_retired_slices }}"
 
 - name: Find the CI slices

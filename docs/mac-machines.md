@@ -33,7 +33,7 @@ The sole self-hosted runner for `BlackNBrownStudios/platform` mobile CI. Native 
 
 ### Build-tree prune
 
-`m1-playground-mac` builds each game in a git worktree beside its checkout (unity-core-playground `scripts/build.sh`: `<checkout>-<game>`, `<checkout>-<game>-ios`) and keeps it, so that game's next build starts with its Library imported. Nothing removed them: on 2026-11-10 seven held 137G and NodeDiskLow tripped at 16% free. `unity-ci-host-mac` `tasks/disk.yml` (tag `ci-disk`) installs `files/ci-tree-prune.sh` as the hourly LaunchAgent `com.kblab.ci-tree-prune`, the Mac's counterpart of ci-host's `ci-disk-prune.sh`. Each run:
+`m1-playground-mac` builds each game in a git worktree beside its checkout (unity-core-playground `scripts/build.sh`: `<checkout>-<game>`, `<checkout>-<game>-ios`) and keeps it, so that game's next build starts with its Library imported. A release job does the same in a clone under the checkout's `Builds/release-tree/<job>` (`release.yml`, `ios-release.yml`, `phone-release.yml`). Nothing removed them: on 2026-11-10 seven worktrees held 137G and NodeDiskLow tripped at 16% free; on 2026-11-20 five release trees held 136G at 97% full, since the prune swept only the worktrees. `unity-ci-host-mac` `tasks/disk.yml` (tag `ci-disk`) installs `files/ci-tree-prune.sh` as the hourly LaunchAgent `com.kblab.ci-tree-prune`, the Mac's counterpart of ci-host's `ci-disk-prune.sh`. Each run:
 
 - skips a tree in use: a process names it in its arguments (Unity's `-projectPath`, `git -C`, xcodebuild) or works inside it, or the runner has a job and the tree was written in the last hour;
 - removes a tree idle for `unity_ci_mac_prune_tree_days` (7);
@@ -107,7 +107,7 @@ Considered and rejected. MDM's unique capability is zero-touch DEP/ADE enrollmen
 | Auto-login | Enabled (current user) | Unattended restarts after power outage | install script (asserted by macos-baseline) |
 | Screen lock and screensaver (mac-mini) | Off (`sysadminctl -screenLock off`, screensaver `idleTime` 0, `askForPassword` 0) | A locked session blocks the desktop and store-console tools; auto-login already gives a session to anyone at the Mac | screen lock: person, once; screensaver: macos-agent-tools sets both, and asserts the lock delay and that the console session is unlocked now (ioreg `CGSSessionScreenIsLocked`) |
 | Passwordless sudo (mac-mini) | Blanket, `/etc/sudoers.d/agent-machine` | Agents need root unattended | macos-agent-tools |
-| Spotlight index (mac-mini) | Off, index removed | It reached 51 GB; nothing here searches with it | macos-agent-tools |
+| Spotlight index (mac-mini) | Off, index removed (`mdutil -X`, then `-i off`: the other order loses the off at the next boot) | It reached 51 GB and ran at 278% CPU during builds; nothing here searches with it | macos-agent-tools |
 | Automatic macOS install (mac-mini) | Off, critical and config-data updates stay on | An update reboots mid-job and can drop the privacy grants | macos-agent-tools |
 | Chrome policy, Playwright Extension force-installed (mac-mini) | `ExtensionInstallForcelist` in `/Library/Managed Preferences/com.google.Chrome.plist` | A Chrome update dropped the hand-installed extension (2026-11-14); a force-installed one is repaired by Chrome | macos-agent-tools |
 | Homebrew Tailscale agent (mac-mini) | Stopped | It looped on needing root; the root daemon stays, logged out | macos-agent-tools |

@@ -288,8 +288,7 @@
         _gh_runner_plan: >-
           {{ {'name': gh_runner_name, 'labels': _gh_runner_drain_row.labels + _gh_runner_row.labels}
              | runner_labels_plan(gh_runner_labels, gh_runner_governed_labels,
-                                  gh_runner_withheld_label, gh_runner_withheld_labels,
-                                  gh_runner_kept_labels) }}
+                                  gh_runner_withheld_label, gh_runner_withheld_labels) }}
       when: _gh_runner_drain_row is not none
 
     - name: Put the labels back after a drain, or set gh_runner_labels

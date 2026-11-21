@@ -12,6 +12,5 @@
   ansible.builtin.set_fact:
     _gh_runner_plan: >-
       {{ _gh_runner_row | runner_labels_plan(gh_runner_labels, gh_runner_governed_labels,
-                                             gh_runner_withheld_label, gh_runner_withheld_labels,
-                                             gh_runner_kept_labels) }}
+                                             gh_runner_withheld_label, gh_runner_withheld_labels) }}
   when: not ansible_check_mode

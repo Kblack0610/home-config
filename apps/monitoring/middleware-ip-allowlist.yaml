@@ -1,4 +1,9 @@
-# IP allowlist — restrict monitoring dashboards to local networks only
+# IP allowlist for hosts meant for the LAN only. It does NOT keep a host off the
+# internet: Traefik sees every connection from a pod IP (the cloudflared pods for the
+# Cloudflare tunnel, the svclb pod for the LAN), so no sourceRange here can tell
+# tunnel traffic from LAN traffic. What keeps a host off the tunnel is having no
+# public DNS record (docs/public-sites.md); scripts/lan-only-exposure.sh checks each
+# host that uses this middleware.
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:

@@ -5,7 +5,7 @@
 # roles/ci-host-budget, a dependency of this role. Operating a host:
 # docs/runbooks/unity-ci-host.md.
 
-# Runner user home; each seat that borrows a Unity slot (Forgejo, light or heavy, a personal repo's runner) lives under it.
+# Runner user home; each standing seat (Forgejo, light or heavy, a personal repo's runner) lives under it.
 linux_ci_user_home: /var/lib/linux-ci
 linux_ci_job_started_hook: /usr/local/lib/linux-ci/job-started.sh
 # The same script under the name that makes it the job-end pass (templates/job-started.sh.j2).
@@ -51,7 +51,7 @@ linux_ci_packages:
   - ttf-liberation
   - noto-fonts
 
-# The same set on Ubuntu (windows-media-ci, the AWS hosts). Docker comes from
+# The same set on Ubuntu (the AWS hosts). Docker comes from
 # unity_ci_packages_debian there (docker.io and docker-buildx are already on an Ubuntu Unity host),
 # and kubectl is not in Ubuntu's archive, so it comes from dl.k8s.io below.
 linux_ci_packages_apt:

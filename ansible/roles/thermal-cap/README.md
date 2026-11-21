@@ -23,7 +23,7 @@ The group sets `thermal_cap_boost: false`, the lever on AMD. A host with a bette
 | Variable | What it writes | Use on |
 |---|---|---|
 | `thermal_cap_platform_profile` | `/sys/firmware/acpi/platform_profile` | Hosts whose firmware offers it (asus: quiet/balanced/performance; hp-victus has none) |
-| `thermal_cap_boost: false` | amd-pstate `cpufreq/boost=0`, or intel_pstate `no_turbo=1` | AMD, which has no writable package power limit (the RAPL zone has no constraint files); the group default |
+| `thermal_cap_boost: false` | every `cpufreq/policy*/boost=0` (the global `cpufreq/boost` on a kernel without them), or intel_pstate `no_turbo=1` | AMD, which has no writable package power limit (the RAPL zone has no constraint files); the group default |
 | `thermal_cap_rapl_long_watts` / `_short_watts` | Intel RAPL PL1/PL2 on both the MSR and MMIO zones | Intel; the efficient cap, since the last watts buy the least speed |
 | `thermal_cap_charge_limit` | `BAT*/charge_control_end_threshold` | Laptops on the charger 24/7 (asus has it; hp-victus does not) |
 | `thermal_cap_max_freq_khz` | every `cpufreq/policy*/scaling_max_freq`, in kHz | AMD, the step below boost off: a lower clock runs at a lower voltage (asus: 2.2GHz) |
@@ -46,7 +46,7 @@ The workstation is managed over a local connection and its sudo asks for a passw
 
 ```bash
 systemctl status thermal-cap.service     # active (exited); journal lists each value written
-cat /sys/devices/system/cpu/cpufreq/boost   # 0 on a boost-capped host
+cat /sys/devices/system/cpu/cpufreq/policy*/boost | sort | uniq -c   # all 0 on a boost-capped host
 ```
 
 Then watch the host under load in Prometheus (`instance:node_cpu_package_temp:celsius`): `NodeCpuHot` should stay quiet, and the target is at most 85C sustained. If it does not hold, lower the cap a step and compare shard times against the previous nightly. An AMD host with no platform profile (ms-a2, deskslim-2, the workstation, razer-laptop) has one lower step once boost is off: `thermal_cap_max_freq_khz`, lowered a few hundred MHz at a time.

@@ -1,0 +1,19 @@
+# Managed by ansible (ci-host-budget). The host's standing small-job slice (inventory
+# ci_small_slice): the runner and supervisor process trees of its light, heavy, Forgejo and
+# repo seats, always admitted, inside the host's CI budget ({{ ci_slice }}). A Forgejo job's
+# containers join it (--cgroup-parent); a GitHub job's docker containers default to
+# {{ ci_slice }} as before, so the CI budget bounds them, not this slice. It may run on any
+# Unity CPU, so it shares cores with busy Unity slots, but takes at most
+# {{ ci_small_slice.cpus }} of them at once, at the default CPUWeight Unity's slice has too, so it
+# keeps that share when every Unity slot is busy. The quota throttles only this slice's jobs, not
+# Unity's (the freeze in {{ ci_slice }}'s comment was a quota on the whole budget).
+[Unit]
+Description=Standing small CI jobs (light, heavy, Forgejo, repo seats)
+Before=slices.target
+
+[Slice]
+CPUAccounting=true
+AllowedCPUs={{ ci_unity_cpus or ci_cpus }}
+CPUQuota={{ ci_small_slice.cpus * 100 }}%
+MemoryAccounting=true
+MemoryMax={{ ci_small_slice.memory }}

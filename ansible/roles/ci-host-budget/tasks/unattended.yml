@@ -1,6 +1,6 @@
 # Ubuntu's daily unattended-upgrade runs needrestart after each dpkg pass, and in
 # non-interactive mode needrestart restarts every service still mapping an old
-# library. On windows-media-ci on 2026-11-13 the 14:03Z libc6/git/liblzma upgrade
+# library. On windows-media-ci (an Ubuntu VM, since retired) on 2026-11-13 the 14:03Z libc6/git/liblzma upgrade
 # restarted the three actions.runner units and containerd several times in four
 # minutes, and each restart killed the job that had just started (about 40 jobs,
 # most of the host's reds that day). On a CI host any service restart can land

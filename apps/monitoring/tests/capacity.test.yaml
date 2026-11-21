@@ -22,8 +22,8 @@ tests:
       - eval_time: 40m
         alertname: CiHostHeldOutByDisk
         exp_alerts:
-          - exp_labels: {alertname: CiHostHeldOutByDisk, severity: critical, category: capacity, fleet: fix, host: razer}
-            exp_annotations: {summary: "razer has idle Unity slots held out by low disk while jobs wait: docs/runbooks/node-disk-pressure.md"}
+          - exp_labels: {alertname: CiHostHeldOutByDisk, severity: critical, category: capacity, fleet: fix, system: ci, host: razer}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/node-disk-pressure.md, summary: "razer has idle Unity slots held out by low disk while jobs wait: docs/runbooks/node-disk-pressure.md"}
 
   - name: a CI host held out by disk stays quiet when no job waits
     interval: 1m
@@ -59,8 +59,8 @@ tests:
       - eval_time: 5h
         alertname: CiSpotHostReclaimedOften
         exp_alerts:
-          - exp_labels: {alertname: CiSpotHostReclaimedOften, severity: warning, category: capacity, fleet: fix, host: aws-spot-1, reason: reclaim}
-            exp_annotations: {summary: "aws-spot-1 was reclaimed by AWS more than 3 times in 24 h, each killing its jobs: set it on-demand in platform infra/aws-ci-burst variables.tf"}
+          - exp_labels: {alertname: CiSpotHostReclaimedOften, severity: warning, category: capacity, fleet: fix, system: ci, host: aws-spot-1, reason: reclaim}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/unity-ci-host.md, summary: "aws-spot-1 was reclaimed by AWS more than 3 times in 24 h, each killing its jobs: set it on-demand in platform infra/aws-ci-burst variables.tf"}
 
   - name: a host held starting or stopping for 15 minutes pages; a normal start, and a governor restart mid-start, do not reset or fire wrongly
     interval: 1m
@@ -85,10 +85,10 @@ tests:
       - eval_time: 20m
         alertname: CiHostPowerStuck
         exp_alerts:
-          - exp_labels: {alertname: CiHostPowerStuck, severity: critical, category: capacity, fleet: fix, host: aws-spot-2, state: starting}
-            exp_annotations: {summary: "aws-spot-2 has been starting for 15 minutes: docs/runbooks/unity-ci-host.md#a-host-stuck-starting-or-stopping"}
-          - exp_labels: {alertname: CiHostPowerStuck, severity: critical, category: capacity, fleet: fix, host: aws-build-1, state: stopping}
-            exp_annotations: {summary: "aws-build-1 has been stopping for 15 minutes: docs/runbooks/unity-ci-host.md#a-host-stuck-starting-or-stopping"}
+          - exp_labels: {alertname: CiHostPowerStuck, severity: critical, category: capacity, fleet: fix, system: ci, host: aws-spot-2, state: starting}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/unity-ci-host.md#a-host-stuck-starting-or-stopping, summary: "aws-spot-2 has been starting for 15 minutes: docs/runbooks/unity-ci-host.md#a-host-stuck-starting-or-stopping"}
+          - exp_labels: {alertname: CiHostPowerStuck, severity: critical, category: capacity, fleet: fix, system: ci, host: aws-build-1, state: stopping}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/unity-ci-host.md#a-host-stuck-starting-or-stopping, summary: "aws-build-1 has been stopping for 15 minutes: docs/runbooks/unity-ci-host.md#a-host-stuck-starting-or-stopping"}
 
   - name: a blind governor pages after 30 minutes, and a short gap stays quiet
     interval: 1m
@@ -105,24 +105,17 @@ tests:
       - eval_time: 60m
         alertname: CiGovernorBlind
         exp_alerts:
-          - exp_labels: {alertname: CiGovernorBlind, severity: critical, category: capacity, fleet: fix}
-            exp_annotations: {summary: "ci-runner-governor has had no reading for 30 minutes, so no Unity slot is being pulled or returned. Check github_runner_exporter_api_ok and GitHub's API limit"}
+          - exp_labels: {alertname: CiGovernorBlind, severity: critical, category: capacity, fleet: fix, system: ci}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/unity-ci-host.md#the-governor, summary: "ci-runner-governor has had no reading for 30 minutes, so no Unity slot is being pulled or returned. Check github_runner_exporter_api_ok and GitHub's API limit"}
 
-  - name: a host short of its runners for an hour wakes an agent; opt-in and powered hosts stay quiet
+  - name: a host short of its runners for an hour wakes an agent; stopped and unread hosts stay quiet
     interval: 1m
     input_series:
-      - series: 'github_runner_pool_expected{host="windows-media-ci",pool="unity"}'
+      - series: 'github_runner_pool_expected{host="tuf-b550",pool="unity"}'
         values: '3x90'
-      - series: 'github_runner_pool_online{host="windows-media-ci",pool="unity"}'
+      - series: 'github_runner_pool_online{host="tuf-b550",pool="unity"}'
         values: '2x90'
-      # Opt-in: offline unless asked for.
-      - series: 'github_runner_pool_expected{host="windows-media",pool="windows"}'
-        values: '1x90'
-      - series: 'github_runner_pool_online{host="windows-media",pool="windows"}'
-        values: '0x90'
-      - series: 'ci_governor_rate_usd_per_hour{host="windows-media-ci",basis="owned"}'
-        values: '0x90'
-      - series: 'ci_governor_rate_usd_per_hour{host="windows-media",basis="owned"}'
+      - series: 'ci_governor_rate_usd_per_hour{host="tuf-b550",basis="owned"}'
         values: '0x90'
       # Powered off by the governor: quiet.
       - series: 'github_runner_pool_expected{host="aws-burst-2",pool="unity"}'
@@ -163,10 +156,10 @@ tests:
       - eval_time: 65m
         alertname: CiHostRunnersOffline
         exp_alerts:
-          - exp_labels: {alertname: CiHostRunnersOffline, severity: warning, category: capacity, fleet: fix, host: aws-burst-3, pool: unity}
-            exp_annotations: {summary: "aws-burst-3 has had 1 unity runner(s) offline for an hour: docs/runbooks/unity-ci-host.md#a-host-short-of-its-runners"}
-          - exp_labels: {alertname: CiHostRunnersOffline, severity: warning, category: capacity, fleet: fix, host: windows-media-ci, pool: unity}
-            exp_annotations: {summary: "windows-media-ci has had 1 unity runner(s) offline for an hour: docs/runbooks/unity-ci-host.md#a-host-short-of-its-runners"}
+          - exp_labels: {alertname: CiHostRunnersOffline, severity: warning, category: capacity, fleet: fix, system: ci, host: aws-burst-3, pool: unity}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/unity-ci-host.md#a-host-short-of-its-runners, summary: "aws-burst-3 has had 1 unity runner(s) offline for an hour: docs/runbooks/unity-ci-host.md#a-host-short-of-its-runners"}
+          - exp_labels: {alertname: CiHostRunnersOffline, severity: warning, category: capacity, fleet: fix, system: ci, host: tuf-b550, pool: unity}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/unity-ci-host.md#a-host-short-of-its-runners, summary: "tuf-b550 has had 1 unity runner(s) offline for an hour: docs/runbooks/unity-ci-host.md#a-host-short-of-its-runners"}
 
   - name: a runner gap shorter than an hour stays quiet
     interval: 1m
@@ -198,8 +191,8 @@ tests:
       - eval_time: 35m
         alertname: CiJobUnserved
         exp_alerts:
-          - exp_labels: {alertname: CiJobUnserved, severity: warning, category: capacity, fleet: fix, repo: .dotfiles-private, workflow: ci, job_name: shell tests, labels: "self-hosted,linux"}
-            exp_annotations: {summary: ".dotfiles-private shell tests has waited 35m 0s for labels self-hosted,linux that no runner it may use carries: docs/runbooks/unity-ci-host.md#a-job-no-runner-serves"}
+          - exp_labels: {alertname: CiJobUnserved, severity: warning, category: capacity, fleet: fix, system: ci, repo: .dotfiles-private, workflow: ci, job_name: shell tests, labels: "self-hosted,linux"}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/unity-ci-host.md#a-job-no-runner-serves, summary: ".dotfiles-private shell tests has waited 35m 0s for labels self-hosted,linux that no runner it may use carries: docs/runbooks/unity-ci-host.md#a-job-no-runner-serves"}
 
   - name: a small job on a whole slot of a host with seats warns after 10 minutes, and nowhere else
     interval: 1m
@@ -233,8 +226,33 @@ tests:
       - eval_time: 12m
         alertname: CiSmallJobOnWholeSlot
         exp_alerts:
-          - exp_labels: {alertname: CiSmallJobOnWholeSlot, severity: warning, category: capacity, fleet: fix, host: ms-a2, runner: ms-a2-unity-pool-1, kind: light}
-            exp_annotations: {summary: "ms-a2-unity-pool-1 has kept taking light jobs on a whole Unity slot for 10 minutes, though ms-a2 has seats for small jobs: docs/runbooks/unity-ci-host.md#a-small-job-on-a-whole-slot"}
+          - exp_labels: {alertname: CiSmallJobOnWholeSlot, severity: warning, category: capacity, fleet: fix, system: ci, host: ms-a2, runner: ms-a2-unity-pool-1, kind: light}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/unity-ci-host.md#a-small-job-on-a-whole-slot, summary: "ms-a2-unity-pool-1 has kept taking light jobs on a whole Unity slot for 10 minutes, though ms-a2 has seats for small jobs: docs/runbooks/unity-ci-host.md#a-small-job-on-a-whole-slot"}
+
+  - name: a small job waiting 15 minutes for a seat warns once per kind
+    interval: 1m
+    input_series:
+      # Two light jobs past the line give one light alert; heavy stays under it; a stuck
+      # jobless row and a Forgejo job are not this alert's.
+      - series: 'github_actions_job_waiting{pool="light",repo="unity-core-playground",job_name="a",forge="github",stuck="false"}'
+        values: '600+60x30'
+      - series: 'github_actions_job_waiting{pool="light",repo="platform",job_name="b",forge="github",stuck="false"}'
+        values: '660+60x30'
+      - series: 'github_actions_job_waiting{pool="heavy",repo="platform",job_name="c",forge="github",stuck="false"}'
+        values: '60+60x30'
+      - series: 'github_actions_job_waiting{pool="light",repo="platform",job_name="d",forge="github",stuck="true"}'
+        values: '99999x30'
+      - series: 'github_actions_job_waiting{pool="light",repo="home-config",job_name="e",forge="forgejo",stuck="false"}'
+        values: '99999x30'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: CiSmallJobQueuedTooLong
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: CiSmallJobQueuedTooLong
+        exp_alerts:
+          - exp_labels: {alertname: CiSmallJobQueuedTooLong, severity: warning, category: capacity, fleet: fix, system: ci, pool: light}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/unity-ci-host.md#a-small-job-waiting-for-a-seat, summary: "A light job has waited 21m 0s for a seat: docs/runbooks/unity-ci-host.md#a-small-job-waiting-for-a-seat"}
 
   - name: a low GitHub API bucket warns after 10 minutes, per scope, across a pod restart
     interval: 1m
@@ -253,8 +271,8 @@ tests:
       - eval_time: 15m
         alertname: GithubApiRateLow
         exp_alerts:
-          - exp_labels: {alertname: GithubApiRateLow, severity: warning, category: capacity, fleet: fix, scope: repos}
-            exp_annotations: {summary: "GitHub API repos bucket has 300 calls left this hour: docs/runbooks/unity-ci-host.md#github-api-limit"}
+          - exp_labels: {alertname: GithubApiRateLow, severity: warning, category: capacity, fleet: fix, system: ci, scope: repos}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/unity-ci-host.md#github-api-limit, summary: "GitHub API repos bucket has 300 calls left this hour: docs/runbooks/unity-ci-host.md#github-api-limit"}
 
   - name: a short dip in the GitHub API bucket stays quiet
     interval: 1m
@@ -304,15 +322,16 @@ tests:
       - eval_time: 40m
         alertname: NodeDiskLow
         exp_alerts:
-          - exp_labels: {alertname: NodeDiskLow, severity: warning, category: capacity, fleet: fix, instance: b, device: d2, job: node-exporter}
-            exp_annotations: {summary: "b d2 has 19% free"}
-          - exp_labels: {alertname: NodeDiskLow, severity: warning, category: capacity, fleet: fix, instance: c, device: d3, job: node-exporter}
-            exp_annotations: {summary: "c d3 has 9% free"}
+          - exp_labels: {alertname: NodeDiskLow, severity: warning, category: capacity, fleet: fix, system: deploy, instance: b, device: d2, job: node-exporter}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/node-disk-pressure.md, summary: "b d2 has 19% free"}
+          - exp_labels: {alertname: NodeDiskLow, severity: warning, category: capacity, fleet: fix, system: deploy, instance: c, device: d3, job: node-exporter}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/node-disk-pressure.md, summary: "c d3 has 9% free"}
       - eval_time: 20m
         alertname: NodeDiskCritical
         exp_alerts:
-          - exp_labels: {alertname: NodeDiskCritical, severity: critical, category: capacity, fleet: fix, instance: c, device: d3, job: node-exporter}
+          - exp_labels: {alertname: NodeDiskCritical, severity: critical, category: capacity, fleet: fix, system: deploy, instance: c, device: d3, job: node-exporter}
             exp_annotations:
+              runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/node-disk-pressure.md
               summary: "c d3 has 9% free"
               description: Kubelet evicts pods at 5% free and keeps evicting until 15% is free.
       - eval_time: 10m
@@ -345,8 +364,8 @@ tests:
       - eval_time: 40m
         alertname: NodeDiskLow
         exp_alerts:
-          - exp_labels: {alertname: NodeDiskLow, severity: warning, category: capacity, fleet: fix, instance: m, device: disk3s5, job: mac-nodes}
-            exp_annotations: {summary: "m disk3s5 has 14% free"}
+          - exp_labels: {alertname: NodeDiskLow, severity: warning, category: capacity, fleet: fix, system: deploy, instance: m, device: disk3s5, job: mac-nodes}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/node-disk-pressure.md, summary: "m disk3s5 has 14% free"}
 
   - name: btrfs subvolumes on one device count once
     interval: 1m
@@ -363,8 +382,9 @@ tests:
       - eval_time: 20m
         alertname: NodeDiskCritical
         exp_alerts:
-          - exp_labels: {alertname: NodeDiskCritical, severity: critical, category: capacity, fleet: fix, instance: a, device: d, job: node-exporter}
+          - exp_labels: {alertname: NodeDiskCritical, severity: critical, category: capacity, fleet: fix, system: deploy, instance: a, device: d, job: node-exporter}
             exp_annotations:
+              runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/node-disk-pressure.md
               summary: "a d has 5% free"
               description: Kubelet evicts pods at 5% free and keeps evicting until 15% is free.
 
@@ -393,8 +413,8 @@ tests:
       - eval_time: 40m
         alertname: NodeDiskFillingFast
         exp_alerts:
-          - exp_labels: {alertname: NodeDiskFillingFast, severity: critical, category: capacity, fleet: fix, instance: fast, device: d, job: node-exporter}
-            exp_annotations: {summary: "fast d is on course to fill within 4 hours"}
+          - exp_labels: {alertname: NodeDiskFillingFast, severity: critical, category: capacity, fleet: fix, system: deploy, instance: fast, device: d, job: node-exporter}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/node-disk-pressure.md, summary: "fast d is on course to fill within 4 hours"}
 
   - name: inodes
     interval: 1m
@@ -415,15 +435,15 @@ tests:
       - eval_time: 35m
         alertname: NodeInodesLow
         exp_alerts:
-          - exp_labels: {alertname: NodeInodesLow, severity: warning, category: capacity, fleet: fix, instance: low, device: d, job: node-exporter}
-            exp_annotations: {summary: "low d has 9% of its inodes free"}
-          - exp_labels: {alertname: NodeInodesLow, severity: warning, category: capacity, fleet: fix, instance: out, device: d, job: node-exporter}
-            exp_annotations: {summary: "out d has 4% of its inodes free"}
+          - exp_labels: {alertname: NodeInodesLow, severity: warning, category: capacity, fleet: fix, system: deploy, instance: low, device: d, job: node-exporter}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/node-disk-pressure.md, summary: "low d has 9% of its inodes free"}
+          - exp_labels: {alertname: NodeInodesLow, severity: warning, category: capacity, fleet: fix, system: deploy, instance: out, device: d, job: node-exporter}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/node-disk-pressure.md, summary: "out d has 4% of its inodes free"}
       - eval_time: 10m
         alertname: NodeInodesCritical
         exp_alerts:
-          - exp_labels: {alertname: NodeInodesCritical, severity: critical, category: capacity, fleet: fix, instance: out, device: d, job: node-exporter}
-            exp_annotations: {summary: "out d has 4% of its inodes free"}
+          - exp_labels: {alertname: NodeInodesCritical, severity: critical, category: capacity, fleet: fix, system: deploy, instance: out, device: d, job: node-exporter}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/node-disk-pressure.md, summary: "out d has 4% of its inodes free"}
 
   - name: memory
     interval: 1m
@@ -449,8 +469,8 @@ tests:
       - eval_time: 20m
         alertname: NodeMemoryPressure
         exp_alerts:
-          - exp_labels: {alertname: NodeMemoryPressure, severity: critical, fleet: fix, category: capacity, instance: stalled}
-            exp_annotations: {summary: "stalled is stalled on memory 30% of the time"}
+          - exp_labels: {alertname: NodeMemoryPressure, severity: critical, fleet: fix, system: deploy, category: capacity, instance: stalled}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/node-crash-storms.md#oom-kills-which-process-and-cgroup, summary: "stalled is stalled on memory 30% of the time"}
 
   - name: cpu pressure
     interval: 1m
@@ -475,8 +495,8 @@ tests:
       - eval_time: 70m
         alertname: NodeCpuStarved
         exp_alerts:
-          - exp_labels: {alertname: NodeCpuStarved, severity: critical, fleet: fix, category: capacity, instance: starved}
-            exp_annotations: {summary: "Tasks on starved have waited for CPU for over an hour"}
+          - exp_labels: {alertname: NodeCpuStarved, severity: critical, fleet: fix, system: deploy, category: capacity, instance: starved}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/scripts/host-headroom.py, summary: "Tasks on starved have waited for CPU for over an hour"}
 
   - name: load per CPU warns past 1x for 15m and pages past 1.5x for 10m
     interval: 1m
@@ -506,15 +526,15 @@ tests:
       - eval_time: 11m
         alertname: NodeLoadCritical
         exp_alerts:
-          - exp_labels: {alertname: NodeLoadCritical, severity: critical, category: capacity, fleet: fix, instance: hot}
-            exp_annotations: {summary: "hot load is 2x its CPUs: stop work on it now"}
+          - exp_labels: {alertname: NodeLoadCritical, severity: critical, category: capacity, fleet: fix, system: deploy, instance: hot}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/scripts/host-headroom.py, summary: "hot load is 2x its CPUs: stop work on it now"}
       - eval_time: 16m
         alertname: NodeLoadHigh
         exp_alerts:
-          - exp_labels: {alertname: NodeLoadHigh, severity: warning, category: capacity, fleet: fix, instance: hot}
-            exp_annotations: {summary: "hot load is 2x its CPUs for 15m: scripts/host-headroom.py, then move work off"}
-          - exp_labels: {alertname: NodeLoadHigh, severity: warning, category: capacity, fleet: fix, instance: warm}
-            exp_annotations: {summary: "warm load is 1.1x its CPUs for 15m: scripts/host-headroom.py, then move work off"}
+          - exp_labels: {alertname: NodeLoadHigh, severity: warning, category: capacity, fleet: fix, system: deploy, instance: hot}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/scripts/host-headroom.py, summary: "hot load is 2x its CPUs for 15m: scripts/host-headroom.py, then move work off"}
+          - exp_labels: {alertname: NodeLoadHigh, severity: warning, category: capacity, fleet: fix, system: deploy, instance: warm}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/scripts/host-headroom.py, summary: "warm load is 1.1x its CPUs for 15m: scripts/host-headroom.py, then move work off"}
 
   - name: oom kills, a few warn and a storm pages
     interval: 5m
@@ -529,8 +549,8 @@ tests:
       - eval_time: 30m
         alertname: NodeOomKillStorm
         exp_alerts:
-          - exp_labels: {alertname: NodeOomKillStorm, severity: critical, category: capacity, fleet: fix, instance: storm}
-            exp_annotations: {summary: "storm killed 20 processes for memory in the last hour: docs/runbooks/node-crash-storms.md"}
+          - exp_labels: {alertname: NodeOomKillStorm, severity: critical, category: capacity, fleet: fix, system: deploy, instance: storm}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/node-crash-storms.md, summary: "storm killed 20 processes for memory in the last hour: docs/runbooks/node-crash-storms.md"}
 
   - name: a node whose exporter is gone still pages
     interval: 1m
@@ -557,8 +577,8 @@ tests:
       - eval_time: 20m
         alertname: NodeExporterMissing
         exp_alerts:
-          - exp_labels: {alertname: NodeExporterMissing, severity: critical, fleet: fix, category: capacity, node: evicted, internal_ip: 10.0.0.3}
-            exp_annotations: {summary: "No node-exporter data from evicted"}
+          - exp_labels: {alertname: NodeExporterMissing, severity: critical, fleet: fix, system: telemetry, category: capacity, node: evicted, internal_ip: 10.0.0.3}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/monitoring/README.md, summary: "No node-exporter data from evicted"}
 
   - name: crash loops page only in the namespaces that matter
     interval: 1m
@@ -574,8 +594,8 @@ tests:
       - eval_time: 65m
         alertname: CriticalServiceCrashLooping
         exp_alerts:
-          - exp_labels: {alertname: CriticalServiceCrashLooping, severity: critical, fleet: fix, category: capacity, reason: CrashLoopBackOff, namespace: ntfy, pod: p, container: c}
-            exp_annotations: {summary: "ntfy/p has been crash looping for an hour"}
+          - exp_labels: {alertname: CriticalServiceCrashLooping, severity: critical, fleet: fix, system: deploy, category: capacity, reason: CrashLoopBackOff, namespace: ntfy, pod: p, container: c}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/app-lifecycle.md, summary: "ntfy/p has been crash looping for an hour"}
 
   - name: an image pull failure pages only in the namespaces that matter
     interval: 1m
@@ -591,8 +611,8 @@ tests:
       - eval_time: 11m
         alertname: CriticalServiceImagePullFailing
         exp_alerts:
-          - exp_labels: {alertname: CriticalServiceImagePullFailing, severity: critical, fleet: fix, category: capacity, reason: ImagePullBackOff, namespace: forgejo, pod: f, container: forgejo}
-            exp_annotations: {summary: "forgejo/f cannot pull the image of forgejo"}
+          - exp_labels: {alertname: CriticalServiceImagePullFailing, severity: critical, fleet: fix, system: deploy, category: capacity, reason: ImagePullBackOff, namespace: forgejo, pod: f, container: forgejo}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/app-lifecycle.md, summary: "forgejo/f cannot pull the image of forgejo"}
 
   - name: a recent failed verify pages, the 229-day-old Job does not
     interval: 1m
@@ -613,8 +633,8 @@ tests:
       - eval_time: 2m
         alertname: BackupVerifyFailed
         exp_alerts:
-          - exp_labels: {alertname: BackupVerifyFailed, severity: critical, fleet: fix, category: backup, namespace: nas, job_name: nas-backup-verify-new}
-            exp_annotations: {summary: "nas-backup-verify-new failed: read its log"}
+          - exp_labels: {alertname: BackupVerifyFailed, severity: critical, fleet: fix, system: recovery, category: backup, namespace: nas, job_name: nas-backup-verify-new}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/backup-runbook.md, summary: "nas-backup-verify-new failed: read its log"}
 
   - name: core dumps warn on any, page past 5 an hour or 10G
     interval: 1m
@@ -642,10 +662,10 @@ tests:
       - eval_time: 10m
         alertname: NodeCoreDumpStorm
         exp_alerts:
-          - exp_labels: {alertname: NodeCoreDumpStorm, severity: critical, category: capacity, fleet: fix, instance: big}
-            exp_annotations: {summary: "big is crash looping or holding large core dumps: docs/runbooks/node-crash-storms.md"}
-          - exp_labels: {alertname: NodeCoreDumpStorm, severity: critical, category: capacity, fleet: fix, instance: many}
-            exp_annotations: {summary: "many is crash looping or holding large core dumps: docs/runbooks/node-crash-storms.md"}
+          - exp_labels: {alertname: NodeCoreDumpStorm, severity: critical, category: capacity, fleet: fix, system: deploy, instance: big}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/node-crash-storms.md, summary: "big is crash looping or holding large core dumps: docs/runbooks/node-crash-storms.md"}
+          - exp_labels: {alertname: NodeCoreDumpStorm, severity: critical, category: capacity, fleet: fix, system: deploy, instance: many}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/node-crash-storms.md, summary: "many is crash looping or holding large core dumps: docs/runbooks/node-crash-storms.md"}
 
   # As scraped: the target's namespace is on the series, the claim's is in claim_namespace.
   - name: a PV warns past its request and pages past 150% only on a node under 20% free
@@ -686,19 +706,19 @@ tests:
       - eval_time: 65m
         alertname: LocalPathPvFarOverRequest
         exp_alerts:
-          - exp_labels: {alertname: LocalPathPvFarOverRequest, severity: critical, fleet: fix, category: capacity, namespace: n, claim_namespace: n, persistentvolumeclaim: far, volumename: pvc-c, instance: "tight:9100"}
-            exp_annotations: {summary: "n/far uses 160% of what it requested, on a node under 20% free"}
+          - exp_labels: {alertname: LocalPathPvFarOverRequest, severity: critical, fleet: fix, system: deploy, category: capacity, namespace: n, claim_namespace: n, persistentvolumeclaim: far, volumename: pvc-c, instance: "tight:9100"}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/move-local-path-pvc.md, summary: "n/far uses 160% of what it requested, on a node under 20% free"}
       - eval_time: 65m
         alertname: LocalPathPvOverRequest
         exp_alerts:
-          - exp_labels: {alertname: LocalPathPvOverRequest, severity: warning, fleet: fix, category: capacity, namespace: n, claim_namespace: n, persistentvolumeclaim: edge, volumename: pvc-d}
-            exp_annotations: {summary: "n/edge uses 150% of what it requested"}
-          - exp_labels: {alertname: LocalPathPvOverRequest, severity: warning, fleet: fix, category: capacity, namespace: n, claim_namespace: n, persistentvolumeclaim: far, volumename: pvc-c, instance: "tight:9100"}
-            exp_annotations: {summary: "n/far uses 160% of what it requested"}
-          - exp_labels: {alertname: LocalPathPvOverRequest, severity: warning, fleet: fix, category: capacity, namespace: n, claim_namespace: n, persistentvolumeclaim: over, volumename: pvc-b}
-            exp_annotations: {summary: "n/over uses 120% of what it requested"}
-          - exp_labels: {alertname: LocalPathPvOverRequest, severity: warning, fleet: fix, category: capacity, namespace: n, claim_namespace: n, persistentvolumeclaim: roomy, volumename: pvc-e, instance: "roomy:9100"}
-            exp_annotations: {summary: "n/roomy uses 900% of what it requested"}
+          - exp_labels: {alertname: LocalPathPvOverRequest, severity: warning, fleet: fix, system: deploy, category: capacity, namespace: n, claim_namespace: n, persistentvolumeclaim: edge, volumename: pvc-d}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/move-local-path-pvc.md, summary: "n/edge uses 150% of what it requested"}
+          - exp_labels: {alertname: LocalPathPvOverRequest, severity: warning, fleet: fix, system: deploy, category: capacity, namespace: n, claim_namespace: n, persistentvolumeclaim: far, volumename: pvc-c, instance: "tight:9100"}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/move-local-path-pvc.md, summary: "n/far uses 160% of what it requested"}
+          - exp_labels: {alertname: LocalPathPvOverRequest, severity: warning, fleet: fix, system: deploy, category: capacity, namespace: n, claim_namespace: n, persistentvolumeclaim: over, volumename: pvc-b}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/move-local-path-pvc.md, summary: "n/over uses 120% of what it requested"}
+          - exp_labels: {alertname: LocalPathPvOverRequest, severity: warning, fleet: fix, system: deploy, category: capacity, namespace: n, claim_namespace: n, persistentvolumeclaim: roomy, volumename: pvc-e, instance: "roomy:9100"}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/move-local-path-pvc.md, summary: "n/roomy uses 900% of what it requested"}
 
   - name: a stopped metrics timer warns after an hour
     interval: 1m
@@ -714,8 +734,8 @@ tests:
       - eval_time: 80m
         alertname: NodeDiskMetricsStale
         exp_alerts:
-          - exp_labels: {alertname: NodeDiskMetricsStale, severity: warning, fleet: fix, category: capacity, instance: a, file: /var/lib/node-exporter-textfile/node_disk.prom}
-            exp_annotations: {summary: "a has not updated its disk metrics for over an hour"}
+          - exp_labels: {alertname: NodeDiskMetricsStale, severity: warning, fleet: fix, system: telemetry, category: capacity, instance: a, file: /var/lib/node-exporter-textfile/node_disk.prom}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/ansible/roles/node-disk-metrics/files/node-disk-metrics.sh, summary: "a has not updated its disk metrics for over an hour"}
 
   - name: a failed webhook pages, a healthy one does not
     interval: 1m
@@ -750,8 +770,8 @@ tests:
       - eval_time: 200h
         alertname: DiskReclaimStale
         exp_alerts:
-          - exp_labels: {alertname: DiskReclaimStale, severity: warning, fleet: fix, category: capacity, instance: a}
-            exp_annotations: {summary: "a has not run a disk reclaim pass for over 8 days"}
+          - exp_labels: {alertname: DiskReclaimStale, severity: warning, fleet: fix, system: deploy, category: capacity, instance: a}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/ansible/roles/macos-disk-reclaim/templates/reclaim-disk.sh.j2, summary: "a has not run a disk reclaim pass for over 8 days"}
 
   - name: a reclaim held off for a day warns, a run that clears inside the day does not
     interval: 1m
@@ -767,5 +787,5 @@ tests:
       - eval_time: 30h
         alertname: DiskReclaimSkipped
         exp_alerts:
-          - exp_labels: {alertname: DiskReclaimSkipped, severity: warning, fleet: fix, category: capacity, instance: a, reason: ci_running}
-            exp_annotations: {summary: "Disk reclaim on a has been skipped for a day: ci_running"}
+          - exp_labels: {alertname: DiskReclaimSkipped, severity: warning, fleet: fix, system: deploy, category: capacity, instance: a, reason: ci_running}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/ansible/roles/macos-disk-reclaim/templates/reclaim-disk.sh.j2, summary: "Disk reclaim on a has been skipped for a day: ci_running"}

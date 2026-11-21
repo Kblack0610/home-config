@@ -1,6 +1,6 @@
 # Join a bare-metal host
 
-A fresh x86 box becomes a k3s agent, and a CI host if it carries slots. These are the steps ms-a2, deskslim-2 (2026-11-16) and deskslim-1 (2026-11-18) took. One PR carries every repo change.
+A fresh x86 box becomes a k3s agent, and a CI host if it carries slots. These are the steps ms-a2, deskslim-2 (2026-11-16) and deskslim-1 (2026-11-18) and tuf-b550 (2026-11-20) took. One PR carries every repo change.
 
 1. At the machine (human). BIOS: Restore on AC Power Loss = Power On ([baremetal-power.md](../baremetal-power.md)), Secure Boot off, network boot on for the install. Reserve its MAC in `infrastructure/dhcp/devices.yaml` first, so it comes up on its own IP.
 2. PXE (`infrastructure/pxe-server/README.md`): pick **[4] Cluster** at the menu. The menu defaults to local boot after 10 s, so an unattended box never reinstalls. It installs CachyOS, sshd and the workstation's key, with no k3s, and the host comes up as `cluster-<last 4 of MAC>`. Afterwards put the local disk first in the boot order.

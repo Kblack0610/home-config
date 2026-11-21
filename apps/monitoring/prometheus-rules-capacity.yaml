@@ -79,7 +79,9 @@ spec:
             severity: warning
             category: capacity
             fleet: fix
+            system: deploy
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/node-disk-pressure.md
             summary: "{{ $labels.instance }} {{ $labels.device }} has {{ $value | humanizePercentage }} free"
         # Not in the replay. Razer sat idle like this twice on 2026-10-31 and 11-01 while jobs
         # queued and the Mac took the overflow, and nothing told anyone.
@@ -90,7 +92,9 @@ spec:
             severity: critical
             category: capacity
             fleet: fix
+            system: ci
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/node-disk-pressure.md
             summary: "{{ $labels.host }} has idle Unity slots held out by low disk while jobs wait: docs/runbooks/node-disk-pressure.md"
         # 1 page in 3 days of history: the 8-hour runner metric gap on 2026-10-31. The 5-minute
         # gap on 2026-11-01, when GitHub's limit ran out at the end of its hour, stays quiet.
@@ -101,20 +105,21 @@ spec:
             severity: critical
             category: capacity
             fleet: fix
+            system: ci
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/unity-ci-host.md#the-governor
             summary: "ci-runner-governor has had no reading for 30 minutes, so no Unity slot is being pulled or returned. Check github_runner_exporter_api_ok and GitHub's API limit"
         # One host's slots short of the roster for an hour: the per-host gap that
         # unity-runners-online (zero online org-wide) cannot see. Only hosts that should
         # be up: owned ones (config.json rates, basis owned) and powered ones the governor
         # reads as running; a stopped standby host, or every powered host while the governor
-        # cannot read EC2, stays quiet. Not the opt-in windows pool (windows-media:windows,
-        # offline unless asked for). A 7-day replay to 2026-11-14: fires on windows-media-ci
+        # cannot read EC2, stays quiet. A 7-day replay to 2026-11-14: fires on windows-media-ci
         # (unity-pool-3 down 15h, 11-14) and cachyos-x8664-main (7.5h, 11-13); the roster lag
         # after a host leaves (under 1h) stays quiet.
         - alert: CiHostRunnersOffline
           expr: |
             (
-              max by (host, pool) (github_runner_pool_expected{pool!="windows"})
+              max by (host, pool) (github_runner_pool_expected)
               - max by (host, pool) (github_runner_pool_online)
             ) > 0
             and on (host)
@@ -127,7 +132,9 @@ spec:
             severity: warning
             category: capacity
             fleet: fix
+            system: ci
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/unity-ci-host.md#a-host-short-of-its-runners
             summary: "{{ $labels.host }} has had {{ $value }} {{ $labels.pool }} runner(s) offline for an hour: docs/runbooks/unity-ci-host.md#a-host-short-of-its-runners"
         # A job waiting 30 minutes that no registered runner its repo may use carries every
         # label of (the exporter's pool="unserved"): no slot will ever take it, so it waits
@@ -139,8 +146,25 @@ spec:
             severity: warning
             category: capacity
             fleet: fix
+            system: ci
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/unity-ci-host.md#a-job-no-runner-serves
             summary: "{{ $labels.repo }} {{ $labels.job_name }} has waited {{ $value | humanizeDuration }} for labels {{ $labels.labels }} that no runner it may use carries: docs/runbooks/unity-ci-host.md#a-job-no-runner-serves"
+        # A light or heavy job waiting 15 minutes for a seat: the governor lends seats a slot only
+        # while that kind's wait is the oldest, so a starved kind sits withheld and reads as down.
+        # 2026-11-20: 30 light jobs waited up to 31 minutes while every light seat sat withheld and
+        # nothing fired (hc-801). One alert per kind, not per job, so a backlog gets one owner.
+        - alert: CiSmallJobQueuedTooLong
+          expr: max by (pool) (github_actions_job_waiting{pool=~"light|heavy",forge!="forgejo",stuck!="true"}) > 900
+          for: 5m
+          labels:
+            severity: warning
+            category: capacity
+            fleet: fix
+            system: ci
+          annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/unity-ci-host.md#a-small-job-waiting-for-a-seat
+            summary: "A {{ $labels.pool }} job has waited {{ $value | humanizeDuration }} for a seat: docs/runbooks/unity-ci-host.md#a-small-job-waiting-for-a-seat"
         # A light or heavy job on a whole Unity slot (<host>-unity-pool-N) of a host with light or
         # heavy seats: a second path for a small job is back, so it takes a slot a Unity job
         # needed (hc-693). The host comes from the runner name, since ci_runner_job carries none.
@@ -161,7 +185,9 @@ spec:
             severity: warning
             category: capacity
             fleet: fix
+            system: ci
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/unity-ci-host.md#a-small-job-on-a-whole-slot
             summary: "{{ $labels.runner }} has kept taking {{ $labels.kind }} jobs on a whole Unity slot for 10 minutes, though {{ $labels.host }} has seats for small jobs: docs/runbooks/unity-ci-host.md#a-small-job-on-a-whole-slot"
         # A reclaim kills every job on the Spot host. More than 3 in a day means that type is
         # scarce: set its entry spot = false in platform infra/aws-ci-burst (2026-11-13 plan).
@@ -172,7 +198,9 @@ spec:
             severity: warning
             category: capacity
             fleet: fix
+            system: ci
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/unity-ci-host.md
             summary: "{{ $labels.host }} was reclaimed by AWS more than 3 times in 24 h, each killing its jobs: set it on-demand in platform infra/aws-ci-burst variables.tf"
         # EC2 pending or stopping clears inside one scrape: the 7 days to 2026-11-18 hold no
         # starting or stopping sample at all. The command-center ci pools row leaves out any
@@ -186,7 +214,9 @@ spec:
             severity: critical
             category: capacity
             fleet: fix
+            system: ci
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/unity-ci-host.md#a-host-stuck-starting-or-stopping
             summary: "{{ $labels.host }} has been {{ $labels.state }} for 15 minutes: docs/runbooks/unity-ci-host.md#a-host-stuck-starting-or-stopping"
         # GitHub charges orgs/ and repos/ calls to separate 5000-an-hour buckets, and the
         # exporter, governor and boards all go blind when one hits 0. Warning, not a page:
@@ -201,7 +231,9 @@ spec:
             severity: warning
             category: capacity
             fleet: fix
+            system: ci
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/unity-ci-host.md#github-api-limit
             summary: "GitHub API {{ $labels.scope }} bucket has {{ $value }} calls left this hour: docs/runbooks/unity-ci-host.md#github-api-limit"
         # 6 pages in the replay: 4 on asus from the Forgejo backups fixed in #441, 1 the
         # outage, 1 workstation. Would have given 3 hours of warning on 2026-10-31.
@@ -212,7 +244,9 @@ spec:
             severity: critical
             category: capacity
             fleet: fix
+            system: deploy
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/node-disk-pressure.md
             summary: "{{ $labels.instance }} {{ $labels.device }} has {{ $value | humanizePercentage }} free"
             description: Kubelet evicts pods at 5% free and keeps evicting until 15% is free.
         # 2 pages in the replay, one of them the outage, which it caught at 19:45. A 6h
@@ -224,7 +258,9 @@ spec:
             severity: critical
             category: capacity
             fleet: fix
+            system: deploy
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/node-disk-pressure.md
             summary: "{{ $labels.instance }} {{ $labels.device }} is on course to fill within 4 hours"
         - alert: NodeInodesLow
           expr: device:node_filesystem_files_free:ratio < 0.10
@@ -233,7 +269,9 @@ spec:
             severity: warning
             category: capacity
             fleet: fix
+            system: deploy
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/node-disk-pressure.md
             summary: "{{ $labels.instance }} {{ $labels.device }} has {{ $value | humanizePercentage }} of its inodes free"
         - alert: NodeInodesCritical
           expr: device:node_filesystem_files_free:ratio < 0.05
@@ -242,7 +280,9 @@ spec:
             severity: critical
             category: capacity
             fleet: fix
+            system: deploy
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/node-disk-pressure.md
             summary: "{{ $labels.instance }} {{ $labels.device }} has {{ $value | humanizePercentage }} of its inodes free"
 
     # From ansible/roles/node-disk-metrics, on k3s nodes only. New rules, so these have no
@@ -266,7 +306,9 @@ spec:
             severity: critical
             category: capacity
             fleet: fix
+            system: deploy
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/node-crash-storms.md
             summary: "{{ $labels.instance }} is crash looping or holding large core dumps: docs/runbooks/node-crash-storms.md"
         # local-path does not enforce a PV's size, so a PV past its request is taking disk
         # the scheduler and everyone else think is free.
@@ -276,8 +318,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: deploy
             category: capacity
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/move-local-path-pvc.md
             summary: "{{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} uses {{ $value | humanizePercentage }} of what it requested"
         # Pages only once the node is short too (the governor's and NodeDiskLow's 20%): a
         # PV far over on a roomy node is a warning, and critical repeats hourly. On
@@ -291,8 +335,10 @@ spec:
           labels:
             severity: critical
             fleet: fix
+            system: deploy
             category: capacity
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/move-local-path-pvc.md
             summary: "{{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} uses {{ $value | humanizePercentage }} of what it requested, on a node under 20% free"
         # The rules above go quiet when the timer stops, which reads the same as all clear.
         - alert: NodeDiskMetricsStale
@@ -301,8 +347,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: telemetry
             category: capacity
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/ansible/roles/node-disk-metrics/files/node-disk-metrics.sh
             summary: "{{ $labels.instance }} has not updated its disk metrics for over an hour"
         # macos-disk-reclaim writes these on each pass, weekly at the least. A disk fills
         # quietly when the pass stops or stays skipped, as the mini's did in 2026-11.
@@ -312,8 +360,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: deploy
             category: capacity
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/ansible/roles/macos-disk-reclaim/templates/reclaim-disk.sh.j2
             summary: "{{ $labels.instance }} has not run a disk reclaim pass for over 8 days"
         - alert: DiskReclaimSkipped
           expr: homelab_disk_reclaim_skipped == 1
@@ -321,8 +371,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: deploy
             category: capacity
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/ansible/roles/macos-disk-reclaim/templates/reclaim-disk.sh.j2
             summary: "Disk reclaim on {{ $labels.instance }} has been skipped for a day: {{ $labels.reason }}"
 
     - name: homelab-capacity.compute
@@ -344,8 +396,10 @@ spec:
           labels:
             severity: critical
             fleet: fix
+            system: deploy
             category: capacity
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/node-crash-storms.md#oom-kills-which-process-and-cgroup
             summary: "{{ $labels.instance }} is stalled on memory {{ $value | humanizePercentage }} of the time"
         # CI hosts run at full CPU by design, so this stays a warning. 13 in the replay.
         - alert: NodeCpuSaturated
@@ -364,8 +418,10 @@ spec:
           labels:
             severity: critical
             fleet: fix
+            system: deploy
             category: capacity
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/scripts/host-headroom.py
             summary: "Tasks on {{ $labels.instance }} have waited for CPU for over an hour"
         # Load per CPU, which the PSI rules above miss: on 2026-11-13 hp-victus held
         # load15 41.5 on 24 threads (1.7x) and asus 29 on 16 (1.8x) with CPU PSI under
@@ -381,7 +437,9 @@ spec:
             severity: warning
             category: capacity
             fleet: fix
+            system: deploy
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/scripts/host-headroom.py
             summary: "{{ $labels.instance }} load is {{ $value | humanize }}x its CPUs for 15m: scripts/host-headroom.py, then move work off"
         - alert: NodeLoadCritical
           expr: instance:node_load15_per_cpu:ratio > 1.5
@@ -390,7 +448,9 @@ spec:
             severity: critical
             category: capacity
             fleet: fix
+            system: deploy
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/scripts/host-headroom.py
             summary: "{{ $labels.instance }} load is {{ $value | humanize }}x its CPUs: stop work on it now"
         - alert: NodeOomKill
           expr: increase(node_vmstat_oom_kill[1h]) > 0
@@ -410,15 +470,19 @@ spec:
             severity: critical
             category: capacity
             fleet: fix
+            system: deploy
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/node-crash-storms.md
             summary: "{{ $labels.instance }} killed {{ $value | humanize }} processes for memory in the last hour: docs/runbooks/node-crash-storms.md"
         - alert: ContainerOomKilled
           expr: increase(kube_pod_container_status_restarts_total[15m]) > 0 and on (namespace, pod, container) kube_pod_container_status_last_terminated_reason{reason="OOMKilled"} == 1
           labels:
             severity: warning
             fleet: fix
+            system: deploy
             category: capacity
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/node-crash-storms.md
             summary: "{{ $labels.namespace }}/{{ $labels.pod }} was killed for memory"
         # NodeDown reads `up`, and an evicted exporter takes its `up` series with it, so
         # the node that needs watching most went blind. This reads the node list from
@@ -430,8 +494,10 @@ spec:
           labels:
             severity: critical
             fleet: fix
+            system: telemetry
             category: capacity
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/monitoring/README.md
             summary: "No node-exporter data from {{ $labels.node }}"
 
     - name: homelab-capacity.services
@@ -443,8 +509,10 @@ spec:
           labels:
             severity: critical
             fleet: fix
+            system: deploy
             category: capacity
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/app-lifecycle.md
             summary: "{{ $labels.namespace }}/{{ $labels.pod }} has been crash looping for an hour"
         # A critical service whose image cannot be pulled is down until someone
         # acts: on 2026-11-11 Forgejo sat in ImagePullBackOff after codeberg.org
@@ -455,8 +523,10 @@ spec:
           labels:
             severity: critical
             fleet: fix
+            system: deploy
             category: capacity
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/app-lifecycle.md
             summary: "{{ $labels.namespace }}/{{ $labels.pod }} cannot pull the image of {{ $labels.container }}"
         # From the blackbox probes, because cert-manager's metrics are not scraped.
         - alert: CertExpiringSoon
@@ -465,8 +535,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: security
             category: capacity
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/public-sites.md
             summary: "The certificate for {{ $labels.instance }} expires in {{ $value | humanizeDuration }}"
         - alert: CertExpiringCritical
           expr: probe_ssl_earliest_cert_expiry - time() < 3 * 86400
@@ -474,8 +546,10 @@ spec:
           labels:
             severity: critical
             fleet: fix
+            system: security
             category: capacity
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/public-sites.md
             summary: "The certificate for {{ $labels.instance }} expires in {{ $value | humanizeDuration }}"
         # nas-backup-verify checks that the Forgejo archives are whole, the off-box copy
         # matches, and snapshots are recent. A failed run is a backup you cannot trust.
@@ -485,6 +559,8 @@ spec:
           labels:
             severity: critical
             fleet: fix
+            system: recovery
             category: backup
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/backup-runbook.md
             summary: "{{ $labels.job_name }} failed: read its log"

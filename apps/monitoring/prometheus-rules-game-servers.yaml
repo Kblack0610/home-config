@@ -26,8 +26,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: telemetry
             category: games
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/game-registry/README.md
             summary: "Game registry metrics are missing"
             description: "Prometheus has had no bnb_fleet_sessions for 10 minutes; the game-registry scrape is broken, so the game server alerts cannot fire."
 
@@ -39,8 +41,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: deploy
             category: games
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/game-servers/README.md
             summary: "Game server {{ $labels.id }} stopped heartbeating"
             description: "{{ $labels.game }} on {{ $labels.provider }}/{{ $labels.site }} ({{ $labels.version }}) last heartbeat {{ $value }} s ago; it has crashed or hung."
 
@@ -54,8 +58,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: deploy
             category: games
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/game-servers/README.md
             summary: "Game server {{ $labels.id }} ticks are slow"
             description: "{{ $labels.game }} on {{ $labels.provider }}/{{ $labels.site }}: p95 tick {{ printf \"%.1f\" $value }} ms is over 80% of its tick budget for 5 minutes."
 
@@ -69,8 +75,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: deploy
             category: cost
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/game-servers/README.md
             summary: "Edgegap server {{ $labels.id }} is running empty"
             description: "{{ $labels.game }} at {{ $labels.site }} has had no players for 30 minutes and is still deployed (and billed)."
 

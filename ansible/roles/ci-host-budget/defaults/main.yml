@@ -44,6 +44,10 @@ ci_unity_slot_share: false
 # A list gives each slot its own, one entry per ci_unity_slot_cpus entry.
 ci_unity_slot_memory_max: 32G
 
+# The host's standing small-job slice, {cpus: N, memory: NG} (inventory ci_small_slice), or
+# {} for none: its seats run in ci_small_slice_name, which is removed when this is unset.
+ci_small_slice: {}
+
 # CPUs the host's k3s pods run on, outside ci_cpus (empty = no pin). Set, the
 # role makes the kubelet reserve every other CPU, so pods run only here and the
 # scheduler stops placing more than fits: razer took 6-CPU freqtrade backtests
@@ -59,6 +63,8 @@ ci_slice: ci.slice
 ci_unity_slice: ci-unity.slice
 # Unity pool slot n's slice (with ci_unity_slot_cpus) is this prefix + n + ".slice".
 ci_unity_slot_slice_prefix: "{{ ci_unity_slice | replace('.slice', '-') }}"
+# The standing small-job slice (ci_small_slice), a child of ci.slice.
+ci_small_slice_name: ci-small.slice
 
 # The slices this role no longer runs: the per-workload ones it replaced (2026-10-24),
 # and the light/heavy slots' (hc-627, 2026-11-18). Removed on apply.

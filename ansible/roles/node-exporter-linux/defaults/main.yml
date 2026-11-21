@@ -15,8 +15,7 @@ node_exporter_linux_port: 9100
 node_exporter_linux_systemd_units: []
 
 # Directory the textfile collector reads *.prom files from. Empty = off. Set on
-# the workstation, where fleet-assess publishes its local Unity gates, and on
-# windows-media-ci, where ci-runner-cpu writes ci_runner.prom (owned by
-# the user that runs it, so the writer needs no root).
+# the workstation, where fleet-assess publishes its local Unity gates, and on the
+# off-LAN Unity hosts (site.yml), where ci-runner-cpu writes ci_runner.prom.
 node_exporter_linux_textfile_dir: ""
 node_exporter_linux_textfile_owner: root

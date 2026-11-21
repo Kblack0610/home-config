@@ -1,0 +1,85 @@
+---
+# Takes off the GitHub runners this host no longer runs under one shared runner home:
+# gh_runner_keep_names and gh_runner_keep_dirs are the GitHub runners the host keeps there.
+# Each runner dir under gh_runner_user_home whose .runner names a runner not kept loses its
+# registration (deleted by id with the control node's gh), its unit and its dir. The lend seats
+# of the per-slot lending removed in hc-825 (<host>-unity-pool-N-light-M, -heavy-M,
+# <host>-<repo>-N) went this way (hc-839).
+- name: Find the runner registrations under the runner home
+  ansible.builtin.find:
+    paths: "{{ gh_runner_user_home }}"
+    patterns: ".runner"
+    hidden: true
+    recurse: true
+    depth: 2
+  register: _gh_retire_found
+
+# A Forgejo seat's .runner holds its token, so the reads stay out of the log. A read that
+# fails (the file went away) is listed as unreadable by the pick, not retired.
+- name: Read the registrations
+  ansible.builtin.slurp:
+    src: "{{ item.path }}"
+  loop: "{{ _gh_retire_found.files }}"
+  register: _gh_retire_slurped
+  failed_when: false
+  no_log: true
+
+- name: Pick the runners this host no longer keeps
+  ansible.builtin.set_fact:
+    _gh_retire_pick: "{{ _gh_retire_slurped.results | runners_retired(gh_runner_user_home, gh_runner_keep_names, gh_runner_keep_dirs) }}"
+
+- name: Warn about registrations that could not be read
+  ansible.builtin.debug:
+    msg: "Not retired, unreadable or outside a seat dir: {{ _gh_retire_pick.unreadable | join(', ') }}"
+  when: _gh_retire_pick.unreadable | length > 0
+
+# First, so a runner takes no job once its stop is decided: GitHub refuses (422) to delete a
+# runner that is running a job, and the apply never kills one, so that runner waits for a later
+# apply. A 404 is a registration already deleted in the settings page.
+- name: Delete the retired runners' registrations
+  ansible.builtin.command:
+    argv: [gh, api, -X, DELETE, "{{ item.api_path }}/actions/runners/{{ item.id }}"]
+  delegate_to: localhost
+  become: false
+  loop: "{{ _gh_retire_pick.retire }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: _gh_retire_delete
+  changed_when: _gh_retire_delete.rc == 0
+  failed_when: _gh_retire_delete.rc != 0 and ('HTTP 404' not in _gh_retire_delete.stderr and 'HTTP 422' not in _gh_retire_delete.stderr)
+
+# In --check the delete is skipped, so every pick counts as retired there.
+- name: Leave the busy ones for a later apply
+  ansible.builtin.set_fact:
+    _gh_retired: "{{ _gh_retire_delete.results | default([]) | rejectattr('stderr', 'defined') | map(attribute='item') | list
+                     + (_gh_retire_delete.results | default([]) | selectattr('stderr', 'defined') | rejectattr('stderr', 'search', 'HTTP 422') | map(attribute='item') | list) }}"
+
+- name: Warn about the runners still running a job
+  ansible.builtin.debug:
+    msg: "Running a job, retired by a later apply: {{ _gh_retire_pick.retire | map(attribute='name') | reject('in', _gh_retired | map(attribute='name') | list) | join(', ') }}"
+  when: _gh_retired | length < _gh_retire_pick.retire | length
+
+- name: Stop and disable the retired runner units
+  ansible.builtin.systemd:
+    name: "{{ item.unit }}"
+    state: stopped
+    enabled: false
+  loop: "{{ _gh_retired }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: _gh_retire_stop
+  # A dir left by a unit already removed: nothing to stop.
+  failed_when: _gh_retire_stop is failed and 'Could not find the requested service' not in (_gh_retire_stop.msg | default(''))
+
+- name: Remove the retired runner units and dirs
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: "{{ (_gh_retired | map(attribute='unit') | map('regex_replace', '^', '/etc/systemd/system/') | list)
+            + (_gh_retired | map(attribute='dir') | list) }}"
+  register: _gh_retire_removed
+
+- name: Reload systemd after a retired unit
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: _gh_retire_removed is changed

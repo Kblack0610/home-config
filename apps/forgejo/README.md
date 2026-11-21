@@ -68,11 +68,11 @@ Rollback: stop Forgejo, put the copied db back, start it. The host's login shell
 
 ## Runner
 
-Forgejo jobs run on the hosts' Unity test slots, not in the cluster, and no slot is Forgejo's alone. Each lendable Unity slot of a host whose `ci_caps` carry `forgejo` (today ms-a2, windows-media-ci, deskslim-2 and deskslim-1) has a Forgejo seat, `<host>-unity-pool-<n>-forgejo`, or several (`-forgejo-2` and on, one per 2 CPUs of the slot), placed by `scripts/render-ci-topology.py` (topology `borrows`). A seat is a `forgejo-seat` supervisor (`ansible/roles/forgejo-runner-linux`, "CI runners" play) that runs `forgejo-runner one-job` only while ci-runner-governor lends it the slot (`apps/ci-runner-governor`, "Lending"): the governor withholds the slot's GitHub runner, waits for it to go idle, and only then flips the seat's lease to forgejo; it flips back once the Forgejo jobs end and every seat on the slot has acknowledged. The seat runs as `linux-ci` in the borrowed slot's slice, and its job containers start with `--cgroup-parent=<that slice>`, so a Forgejo job uses that slot's cores and memory cap. The governor lends a slot to whichever forge has waited longest. A Forgejo job waits about 2 to 3 minutes for a lend (the exporter's lag plus a lend cycle and a grant cycle).
+Forgejo jobs run on the hosts' small-job slice, not in the cluster and not on a Unity slot. Each host whose `ci_caps` carry `forgejo` (today ms-a2, tuf-b550, deskslim-2 and deskslim-1) has standing Forgejo seats, `<host>-small-forgejo-<n>`, placed by `scripts/render-ci-topology.py` (topology `slice`). A seat is a `forgejo-seat` supervisor (`ansible/roles/forgejo-runner-linux`, "CI runners" play) that runs `forgejo-runner one-job` only while ci-runner-governor's lease for it says forgejo (`apps/ci-runner-governor`); the lease is always forgejo for a standing seat, so a governor that is down stops Forgejo CI and leaves GitHub CI running. The seat runs as `linux-ci` in `ci-small.slice`, and its job containers start with `--cgroup-parent=<that slice>`, so a Forgejo job uses the slice's cores and memory cap. A Forgejo job starts at once: no lend cycle waits in front of it. The earlier per-slot seats (`<host>-unity-pool-<n>-forgejo`) were removed in hc-825; `retire.yml` takes their units off on the next apply.
 
 If the governor is down, every seat holds github and Forgejo CI stops (fail closed, so it never shares a slot with a GitHub job). GitHub CI goes on. A home-config PR's own checks run on these seats, so a governor fix lands by break-glass: merge it as admin without waiting for checks, and Flux applies it from git.
 
-A seat registers once as `<host>-unity-pool-<n>-forgejo` against `http://forge-primary.kblab.me:3000` (`forgejo_runner_instance`; windows-media-ci, which is not on the tailnet, uses `https://git.kblab.me`), with the labels `docker` and `linux-amd64`, and asks for its slot's lease by its seat name (`/lease?seat=`) at `forgejo_runner_lease_url` (the governor's NodePort 30321 at pi5-master). Jobs reach the host's Docker through the mounted socket (`docker_host: automount`), so a workflow needs no `DOCKER_HOST`. The registration token is `vault_forgejo_runner_registration_token` in `ansible/group_vars/ci_hosts/vault.sops.yaml`.
+A seat registers once as `<host>-small-forgejo-<n>` (its dir `~linux-ci/small-forgejo-<n>`) against `http://forge-primary.kblab.me:3000` (`forgejo_runner_instance`), with the labels `docker` and `linux-amd64`, and asks for its slot's lease by its seat name (`/lease?seat=`) at `forgejo_runner_lease_url` (the governor's NodePort 30321 at pi5-master). Jobs reach the host's Docker through the mounted socket (`docker_host: automount`), so a workflow needs no `DOCKER_HOST`. The registration token is `vault_forgejo_runner_registration_token` in `ansible/group_vars/ci_hosts/vault.sops.yaml`.
 
 Add or move a seat: change the host's Unity slots or `ci_caps` in `ansible/inventory.yml`, re-render the topology (`scripts/render-ci-topology.py`), then:
 
@@ -80,16 +80,16 @@ Add or move a seat: change the host's Unity slots or `ci_caps` in `ansible/inven
 cd ansible && ansible-playbook playbooks/site.yml --limit <host> --tags forgejo-ci
 ```
 
-The play stops and removes the units of seats a host no longer has; their registrations stay listed in Site Administration, Actions, Runners until deleted there.
+The play stops and removes the units of seats a host no longer has, and the dirs of the old per-slot lend seats (`unity-pool-<n>-forgejo[-<m>]`, hc-839); their registrations stay listed in Site Administration, Actions, Runners until deleted there.
 
-Re-register a seat (a new instance, or its runner was deleted in the admin UI): remove `~linux-ci/unity-pool-<n>-forgejo/.runner` on the host and re-run the play. A new registration token, if needed:
+Re-register a seat (a new instance, or its runner was deleted in the admin UI): remove `~linux-ci/small-forgejo-<n>/.runner` on the host and re-run the play. A new registration token, if needed:
 
 ```bash
 ssh forge-hel1 docker compose -f /etc/forgejo/compose.yaml exec -u git forgejo \
   forgejo actions generate-runner-token
 ```
 
-Check a seat: `systemctl status forgejo-runner-<host>-unity-pool-<n>-forgejo` and `journalctl -u forgejo-runner-<host>-unity-pool-<n>-forgejo` on the host (it logs each lease change), and `ci_governor_lent` for which slots are lent. The exporter reads each seat's state from the admin runners API, so a seat that never registered shows as missing on the CI dashboard.
+Check a seat: `systemctl status forgejo-runner-<host>-small-forgejo-<n>` and `journalctl -u forgejo-runner-<host>-small-forgejo-<n>` on the host (it logs each lease change). The exporter reads each seat's state from the admin runners API, so a seat that never registered shows as missing on the CI dashboard.
 
 To use Actions in a repo, add `.forgejo/workflows/<name>.yaml`, same syntax as GitHub Actions.
 

@@ -27,6 +27,14 @@ MA 2.x requires a login and the first visitor to an un-onboarded server creates 
 3. Settings -> Providers -> Add music providers: **Spotify** (log in), **Radio Browser**, **Jellyfin** (server URL `http://jellyfin.jellyfin.svc.cluster.local`, a Jellyfin user).
 4. Home Assistant: Settings -> Devices & services -> Add integration -> **Music Assistant**, URL `http://music-assistant.music-assistant.svc.cluster.local:8095`, then approve the login redirect (or paste a long-lived token from MA Settings -> Profile). This cannot be seeded code-first like the Snapcast entry because MA's API needs a token that only exists after step 1.
 
+5. Spotify Connect (a plugin provider; no Spotify Web API login needed, a Premium account in the Spotify app). Configured 2026-11-20 through `scripts/ma-api`, and the same calls rebuild it:
+   - Name the Snapcast players after their rooms (`config/players/save`, `values.name`): Living Room, Office, Kitchen, Bedroom. The Spotify device names follow these.
+   - Create the `Whole House` sync group of the four rooms: `players/create_group_player` with provider `sync_group`.
+   - Add the plugin: `config/providers/setup` `{"provider_domain":"spotify_connect"}`, then `config/flows/submit` with `backend: go_librespot` (Soloist needs a personal Spotify API key).
+   - `config/providers/save` instance `spotify_connect`: `connected_players` = the group plus the four rooms, `publish_name_template: player`.
+   - Set Settings -> Core -> Streams `publish_ip` and `bind_ip` to `192.168.1.152` (`config/core/save` domain `streams`), then restart the pod. See Troubleshooting.
+   Result: Living Room, Office, Kitchen, Bedroom and Whole House in the Spotify app's device list on the LAN; picking one plays through MA to that room. Chosen over a librespot source on snapserver because snapserver is on the pod network, where mDNS discovery cannot reach phones; ask 2p7o9T. This is UI state in `settings.json` (the backup carries it), so there is no manifest.
+
 Snapcast players show up in MA only once snapclients are connected (Phase 2/3).
 
 ## Backup and rebuild
@@ -77,13 +85,22 @@ With no archive, MA starts un-onboarded and the first visitor creates the admin.
 
 - **Snapcast**: enable "Use existing Snapserver", host `snapserver-direct.snapcast.svc.cluster.local`, control port `1705`.
 - **Radio Browser**: no settings.
+- **Spotify Connect**: re-add the plugin after Spotify (First run step 5).
 - **Spotify**: log in again. The old login cannot be carried over by hand, because it is encrypted with the lost `encryption_key`.
 
 The Home Assistant Music Assistant integration also has to be re-authorised (step 4 of `First run`), since its token lived in the lost `auth.db`.
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Spotify app does not list the rooms, but `avahi-browse -rt _spotify-connect._tcp` does | The devices advertise a non-LAN address (`10.42.x` flannel or `172.17.0.1` docker0): with `publish_ip: auto` and `bind_ip: 0.0.0.0` MA picked docker0 (`/info` `base_url` showed `http://172.17.0.1:8095`), and go-librespot then advertises on every interface | Pin streams `publish_ip` and `bind_ip` to `192.168.1.152` (asus-laptop's DHCP reservation) and restart the pod; `/info` `base_url` then reads `http://192.168.1.152:8095` |
 
 ## Verify
 
 ```bash
 kubectl --context home-k3s -n music-assistant get pods -o wide
-curl -fsS https://music.kblab.me/info | jq '{server_version, onboard_done}'
+curl -fsS https://music.kblab.me/info | jq '{server_version, onboard_done, base_url}'
+# Spotify Connect: five devices on 192.168.1.152
+avahi-browse -rpt _spotify-connect._tcp | awk -F';' '/^=/ && $3=="IPv4" {print $4, $8}' | sort -u
 ```

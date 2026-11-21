@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """forgejo-seat: one Forgejo seat's supervisor (ansible role forgejo-runner-linux).
 
-A seat is a Forgejo runner with no slot of its own: it borrows one Unity slot (its cores,
-slice and disk) and runs a job only while ci-runner-governor has lent it that slot
-(apps/ci-runner-governor, LENDING). It holds a lease, github or forgejo, and starts on
+A seat is a standing Forgejo runner in the host's small-job slice: it runs a job only while
+ci-runner-governor's lease for it says forgejo (apps/ci-runner-governor). It holds a lease, github or forgejo, and starts on
 github, so a restart runs nothing until the governor says so:
   github   long-poll /lease?have=github; the governor answers as soon as the lease turns.
   forgejo  `forgejo-runner one-job`: one fetch, and the job if one waits. After a job it asks
@@ -48,7 +47,7 @@ RELAY_DRAIN_SECONDS = 5
 
 
 def ask(have, wait, task=None):
-    """The lease of the slot this seat borrows: as soon as it differs from have, else have after wait seconds."""
+    """The lease of this seat: as soon as it differs from have, else have after wait seconds."""
     url = os.environ["FORGEJO_SEAT_LEASE_URL"].rstrip("/")
     query = urllib.parse.urlencode({"seat": os.environ["FORGEJO_SEAT_NAME"], "have": have, "wait": f"{wait:g}",
                                     **({"task": task} if task else {})})
@@ -88,7 +87,7 @@ def one_job(run):
 def main():
     run = [os.environ["FORGEJO_SEAT_BIN"], "one-job", "--config", os.environ["FORGEJO_SEAT_CONFIG"]]
     lease, backoff = "github", BACKOFF[0]
-    print(f"forgejo-seat {os.environ['FORGEJO_SEAT_NAME']}: on github until the governor lends the slot",
+    print(f"forgejo-seat {os.environ['FORGEJO_SEAT_NAME']}: on github until the governor says forgejo",
           flush=True)
     while True:
         wait = LEASE_WAIT

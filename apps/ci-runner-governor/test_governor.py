@@ -2974,6 +2974,20 @@ class StandingSliceTest(unittest.TestCase):
                                      governor.slice_units(LCFG, one))
         self.assertEqual((out[0]["box"], round(out[1]["box"], 2)), (4, 1.25))
 
+    def test_idle_standing_counts_idle_seats_that_fit_their_slice(self):
+        idle, busy, off = ({"busy": False, "online": True}, {"busy": True, "online": True},
+                           {"busy": False, "online": False})
+        # Name order: the Forgejo seat takes 0.25, and the repo seat's 0.8 no longer fits the 0.75 left.
+        self.assertEqual(governor.idle_standing(LCFG, {FJ_STAND: idle, REPO_STAND: idle}), {"forgejo": 1})
+        self.assertEqual(governor.idle_standing(LCFG, {FJ_STAND: idle, REPO_STAND: off}), {"forgejo": 1})
+        self.assertEqual(governor.idle_standing(LCFG, {FJ_STAND: idle, REPO_STAND: busy}), {})  # 0.25 > 0.2 left
+        self.assertEqual(governor.idle_standing(LCFG, {REPO_STAND: idle, FJ_STAND: busy}), {})  # 0.8 > 0.75 left
+        self.assertEqual(governor.idle_standing(LCFG, {}), {})
+        jobs = {"forgejo": [(60, FJ_JOB)] * 2, REPO: [(60, REPO_JOB)], "github": [(60, frozenset())]}
+        self.assertEqual(governor.uncovered_waits(LCFG, {FJ_STAND: idle, REPO_STAND: off}, jobs), {"forgejo": 1, REPO: 1})
+        self.assertEqual(governor.uncovered_waits(LCFG, {FJ_STAND: off, REPO_STAND: idle}, jobs), {"forgejo": 2, REPO: 0})
+        self.assertEqual(governor.uncovered_waits(LCFG, {}, jobs), {"forgejo": 2, REPO: 1})
+
     def test_a_standing_seat_has_its_kind(self):
         self.assertEqual(governor.seat_kind(LCFG, FJ_STAND), "forgejo")
         self.assertEqual(governor.seat_kind(LCFG, REPO_STAND), REPO)

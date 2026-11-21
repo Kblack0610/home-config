@@ -1610,6 +1610,29 @@ def slice_units(cfg, seat_state):
     return capacity, {h: min(u, 1.0) for h, u in busy.items() if h in capacity}
 
 
+def idle_standing(cfg, seat_state):
+    """{kind: idle standing seats}: those online and not busy whose slice has room for their job
+    (the busy seats' shares leave the seat's own), counted in name order, each taking its share. A
+    seat on a full slice counts for none; a HOT or pinned host still runs its standing seats,
+    which nothing withholds."""
+    idle, room = {}, {h: 1.0 - u for h, u in slice_units(cfg, seat_state)[1].items()}
+    for seat, s in sorted(cfg["standing"].items()):
+        st = seat_state.get(seat, {})
+        if st.get("online") and not st.get("busy") and room.get(s["host"], 0) >= s["share"] - 1e-9:
+            room[s["host"]] -= s["share"]
+            idle[seat_kind(cfg, seat)] = idle.get(seat_kind(cfg, seat), 0) + 1
+    return idle
+
+
+def uncovered_waits(cfg, seat_state, jobs):
+    """{kind: waiting jobs a lend must serve}: jobs ({kind: [(age, need)]}, GitHub's left out) less
+    one per idle standing seat of the kind (idle_standing()), which takes the next job without a
+    lend (STANDING SLICE). So a wave that fits the slices lends nothing, and a lend left from it
+    goes back."""
+    idle = idle_standing(cfg, seat_state)
+    return {k: max(0, len(v) - idle.get(k, 0)) for k, v in jobs.items() if k != "github"}
+
+
 def every_machine(cfg, in_units, machines, local, slices=({}, {})):
     """units() with the whole-slot hosts (machine_units()), the local seats (local_units()) and the
     standing slices (slice_units()) added, and a row for every host of the topology, 0 when none of
@@ -1692,16 +1715,7 @@ def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_
         r = runners.get(slot)
         return max((a for a, need in jobs.get("github", []) if r and slot_takes(cfg, r, slot, need)), default=-1)
 
-    # An idle standing seat takes the next job of its kind without a lend (STANDING SLICE), so each
-    # answers one wait: a wave that fits the slices lends nothing, and a lend left from it goes back.
-    # Only while its slice has room for the job (the busy seats' shares leave its own): a seat on a
-    # full slice answers none. A HOT or pinned host still runs its standing seats, which nothing withholds.
-    idle, room = {}, {h: 1.0 - u for h, u in slice_units(cfg, seat_state)[1].items()}
-    for seat, s in sorted(cfg["standing"].items()):
-        if st(seat).get("online") and not st(seat).get("busy") and room.get(s["host"], 0) >= s["share"] - 1e-9:
-            room[s["host"]] -= s["share"]
-            idle[seat_kind(cfg, seat)] = idle.get(seat_kind(cfg, seat), 0) + 1
-    have, want = {}, {k: max(0, len(v) - idle.get(k, 0)) for k, v in jobs.items() if k != "github"}
+    have, want = {}, uncovered_waits(cfg, seat_state, jobs)
     for slot, lend in sorted(lends.items()):
         if lend["seat"] and lend["phase"] != "returning":
             kind = seat_kind(cfg, lend["seat"])

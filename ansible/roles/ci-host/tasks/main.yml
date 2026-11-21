@@ -1,7 +1,8 @@
 ---
 # One role for every CI host: what the host's caps (ci_caps in inventory.yml) need. The CPU
 # and memory budget comes first, from ci-host-budget (meta). Tags keep the old entry points:
-# --tags unity-ci-host refreshes the Unity tooling alone, --tags ci-disk the disk guard alone.
+# --tags unity-ci-host refreshes the Unity tooling alone, --tags ci-disk the disk guard alone,
+# --tags lfs-store the asset-library LFS store alone (tasks/unity.yml).
 - name: Prepare the host for Unity jobs
   ansible.builtin.import_tasks: unity.yml
   when: ci_caps | default([]) | intersect(['unity', 'unity-build']) | length > 0

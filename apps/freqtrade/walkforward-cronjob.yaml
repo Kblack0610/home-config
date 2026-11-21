@@ -110,10 +110,10 @@ spec:
               resources:
                 requests:
                   cpu: "1"
-                  memory: 6Gi  # equal to the limit, so the scheduler sees what it uses
+                  memory: 8Gi  # equal to the limit, so the scheduler sees what it uses
                 limits:
                   cpu: "2"
-                  memory: 6Gi  # WF_MEMORY_GB of estimated fold memory, which real peaks pass by about 1.5x, plus the interpreter and, in the last shard, the post steps
+                  memory: 8Gi  # a fold estimated above WF_MEMORY_GB runs alone, so the largest fold sets the floor: shard 1 sat at 5.6-5.9Gi with WF_MEMORY_GB 3 and 4, OOMKilled at 6Gi (2026-11-20, ar-4250)
               volumeMounts:
                 - {name: work, mountPath: /work}
           volumes:

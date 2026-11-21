@@ -149,6 +149,8 @@ jobs:
         run: python3 apps/ci-runner-governor/test_replay.py
       - name: github-actions-runner-linux label plan tests
         run: python3 ansible/roles/github-actions-runner-linux/tests/test_runner_labels.py
+      - name: github-actions-runner-linux retire pick tests
+        run: python3 ansible/roles/github-actions-runner-linux/tests/test_runner_retire.py
       # The seat supervisor against the governor's own /lease handler, in this job's container.
       - name: forgejo-seat supervisor tests
         run: python3 ansible/roles/forgejo-runner-linux/tests/test_forgejo_seat.py

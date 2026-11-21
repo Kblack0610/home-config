@@ -210,8 +210,8 @@
 # Playwright cache; a job hook empties a non-Unity workspace around every job, and a
 # light job's first step parks a warm Unity tree's untracked state (roles/ci-host).
 # Tokens come from the control node's gh (admin:org), so there is no standing PAT.
-# Dropping a Unity slot leaves its runner: scripts/unity-ci-runner-remove.sh. Dropping a
-# ci_repo_runners entry too: stop its unit, delete it in the repo's runner settings, rm its dir.
+# Dropping a Unity slot leaves its runner: scripts/unity-ci-runner-remove.sh. A seat dropped
+# from the topology (a ci_repo_runners entry, a light or heavy seat) is retired by the next apply.
 - name: CI runners (Unity slots and the seats that borrow them)
   hosts: unity_ci_runners
   become: true
@@ -322,6 +322,20 @@
         forgejo_seat_names: "{{ ci_seats | selectattr('forge', 'defined') | selectattr('forge', 'eq', 'forgejo') | map(attribute='name') | list }}"
         forgejo_runner_user_home: "{{ linux_ci_user_home }}"
       tags: [runner, ci, forgejo-ci]
+
+    # Every host in the play too, for the GitHub seats under the linux-ci home: a seat dropped
+    # from ci_seats loses its unit, its registration (the control node's gh) and its dir.
+    - name: Retire the GitHub seats this host no longer runs
+      ansible.builtin.include_role:
+        name: github-actions-runner-linux
+        tasks_from: retire
+        apply:
+          tags: [runner, ci, linux-ci]
+      vars:
+        gh_runner_keep_names: "{{ ci_seats | rejectattr('forge', 'defined') | map(attribute='name') | list }}"
+        gh_runner_keep_dirs: "{{ ci_seats | rejectattr('forge', 'defined') | map(attribute='name') | map('regex_replace', '^' ~ inventory_hostname ~ '-', linux_ci_user_home ~ '/') | list }}"
+        gh_runner_user_home: "{{ linux_ci_user_home }}"
+      tags: [runner, ci, linux-ci]
 
     # The Forgejo seats: the standing ones of a host's small-job slice
     # (scripts/render-ci-topology.py). A seat's supervisor runs a job only while the governor's

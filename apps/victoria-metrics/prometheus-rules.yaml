@@ -20,8 +20,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: deploy
             category: storage
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/victoria-metrics/README.md
             summary: "VictoriaMetrics disk under 150 GB free on asus-laptop"
             description: >-
               {{ $value | humanize1024 }}B free under the long-term metrics store.

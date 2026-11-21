@@ -86,8 +86,10 @@ tests:
         workload_type: deployment
         severity: warning
         fleet: fix
+        system: deploy
         category: app-health
       exp_annotations:
+        runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/monitoring/README.md
         summary: 'App down: test/down'
         description: deployment test/down has had zero ready capacity for at least 10 minutes.
     - exp_labels:
@@ -98,8 +100,10 @@ tests:
         workload_type: statefulset
         severity: warning
         fleet: fix
+        system: deploy
         category: app-health
       exp_annotations:
+        runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/monitoring/README.md
         summary: 'App down: test/down-sts'
         description: statefulset test/down-sts has had zero ready capacity for at least 10 minutes.
 - name: health state is 2 healthy, 1 partial or restarting, 0 down, including a workload with no pods
@@ -163,8 +167,10 @@ tests:
         workload_type: deployment
         severity: warning
         fleet: fix
+        system: deploy
         category: app-health
       exp_annotations:
+        runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/monitoring/README.md
         summary: 'App down: test/nopods'
         description: deployment test/nopods has had zero ready capacity for at least 10 minutes.
   - eval_time: 25m
@@ -178,8 +184,10 @@ tests:
         workload_type: deployment
         severity: warning
         fleet: fix
+        system: deploy
         category: app-health
       exp_annotations:
+        runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/monitoring/README.md
         summary: 'App degraded: test/flapping'
         description: deployment test/flapping is partially ready or restarting too often.
     - exp_labels:
@@ -190,7 +198,9 @@ tests:
         workload_type: deployment
         severity: warning
         fleet: fix
+        system: deploy
         category: app-health
       exp_annotations:
+        runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/monitoring/README.md
         summary: 'App degraded: test/partial'
         description: deployment test/partial is partially ready or restarting too often.

@@ -41,8 +41,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: telemetry
             category: trading
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/freqtrade/README.md
             summary: "trader-web metrics are missing or cannot read the trader database: the not-dry-run page is blind"
 
         # The money plan's kill path. Only the watcher itself pages red: the rest are paper
@@ -53,8 +55,10 @@ spec:
           labels:
             severity: critical
             fleet: fix
+            system: deploy
             category: trading
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/freqtrade/README.md
             summary: "The freqtrade watcher has not finished a pass for 5 minutes: no daily loss check is running"
             description: >-
               Check the freqtrade-watcher pod and its log. Every bot's equity is going unwatched
@@ -71,8 +75,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: deploy
             category: trading
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/freqtrade/README.md
             summary: "The watcher has not read bot {{ $labels.bot }} within its limit"
 
         - alert: TraderDailyLossBreach
@@ -91,8 +97,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: deploy
             category: trading
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/freqtrade/README.md
             summary: "Bot {{ $labels.bot }} has been paused or stopped for 30 minutes: python lab/watcher.py --drill-end {{ $labels.bot }} if a drill was left on"
 
         # Ingest writes an error snapshot for a bot whose API does not answer. Ingest runs
@@ -104,8 +112,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: deploy
             category: trading
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/freqtrade/README.md
             summary: "Freqtrade bot {{ $labels.bot }} did not answer two ingest runs in a row: kubectl -n freqtrade logs freqtrade-league-<row>"
 
         - alert: TraderIngestStale
@@ -114,8 +124,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: deploy
             category: trading
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/freqtrade/README.md
             summary: "No bot snapshot for {{ $value | humanizeDuration }}: check the freqtrade-ingest CronJob"
 
         # Backfill runs hourly and appends a few hundred candles; 4h without a new one is a stuck
@@ -126,8 +138,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: deploy
             category: trading
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/freqtrade/README.md
             summary: "Newest {{ $labels.exchange }} candle is {{ $value | humanizeDuration }} old: check the freqtrade-backfill CronJob"
 
         # The futures job runs daily at 05:35 UTC. Funding settles at 00:00, 08:00 and 16:00, so just before
@@ -139,8 +153,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: deploy
             category: trading
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/freqtrade/README.md
             summary: "Newest {{ $labels.exchange }} {{ $labels.kind }} row is {{ $value | humanizeDuration }} old: check the freqtrade-futures CronJob"
 
         - alert: TraderRunFailed
@@ -149,7 +165,9 @@ spec:
             severity: warning
             category: trading
             fleet: fix  # a failed nightly run is an agent's to fix, like TraderRunStale
+            system: deploy
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/freqtrade/README.md
             summary: "The newest {{ $labels.kind }} run failed: its runs row on trader.kblab.me/runs says why"
 
         # The nightly reproduce check (strategy repo lab/reproduce.py, last step of the analysis job) ran a
@@ -162,8 +180,10 @@ spec:
           labels:
             severity: critical
             fleet: fix
+            system: deploy
             category: trading
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/freqtrade/README.md
             summary: "{{ $value }} cached result(s) did not reproduce: see the newest reproduce run on trader.kblab.me/runs"
 
         # Analysis (02:45, 18h guard) and walk-forward (01:00, 8h guard, WF_BUDGET_S records a catching-up run as a
@@ -179,7 +199,9 @@ spec:
             severity: warning
             category: trading
             fleet: fix
+            system: deploy
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/freqtrade/README.md
             summary: "No successful {{ $labels.kind }} run for {{ $value | humanizeDuration }}"
 
         # Shadow paper accounts (strategy repo lab/shadow.py, a step of the nightly analysis) gain a mark for
@@ -192,8 +214,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: deploy
             category: trading
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/freqtrade/README.md
             summary: "The newest shadow account mark is {{ $value | humanizeDuration }} old: the analysis shadow step marked nothing; see the shadow_* keys in the newest analysis run and trader.kblab.me/accounts"
 
         # A lab pod the scheduler cannot place. The default KubePodNotReady skips Job pods, and
@@ -207,7 +231,9 @@ spec:
             severity: warning
             category: trading
             fleet: fix
+            system: deploy
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/freqtrade/README.md
             summary: "{{ $labels.pod }} cannot be scheduled: compare its requests with the nodes' allocatable (kubectl describe pod)"
 
         # Only venues with a sweep in the last 7 days report. The exporter reads each venue's
@@ -217,8 +243,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: deploy
             category: trading
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/freqtrade/README.md
             summary: "No good {{ $labels.venue }} recorder sweep for {{ $value | humanizeDuration }}: the paper league takes no entries there; failed sweeps and their errors are on trader.kblab.me/markets"
 
         # An input our own reader writes (trader lab/inputs.toml, a `reader` and `fresh_min`): its newest reading past
@@ -232,8 +260,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: deploy
             category: trading
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/freqtrade/README.md
             summary: "{{ $labels.input }} has no reading inside its fresh_min: weather takes no entries on it; check CronJob trader-inputs-nws in freqtrade"
 
         # A sweep is scheduled every 5 minutes with Forbid, so one that runs past 5 minutes makes the next
@@ -244,8 +274,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: deploy
             category: trading
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/freqtrade/README.md
             summary: "{{ $labels.venue }} recorder sweep took {{ $value | humanizeDuration }}, past the 5 minute schedule: the next tick is skipped"
 
         # Polymarket global sweeps every 15 minutes and its job is killed at 15 (the compact job's grace),
@@ -256,8 +288,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: deploy
             category: trading
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/freqtrade/README.md
             summary: "polymarket recorder sweep took {{ $value | humanizeDuration }}, close to the 15 minute deadline that kills the job"
 
         # A sweep is every 5 minutes, so 3 failures in an hour is a quarter of them: an adapter or
@@ -267,8 +301,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: deploy
             category: trading
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/freqtrade/README.md
             summary: "{{ $value }} {{ $labels.venue }} recorder sweeps failed in the last hour: market_sweeps.error on trader.kblab.me/markets"
 
         # Paper money only: a rehearsal of the book's hard stop (strategy repo lab/suggest.toml

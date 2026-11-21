@@ -97,7 +97,8 @@ all:
           k3s_extra_args:
             - --node-label=node.kubernetes.io/friendly-name=deskslim-2
         # Its twin: ASRock DeskSlim X600, Ryzen 9 7900X (12 cores), 61G. PXE 2026-11-16,
-        # off with bad RAM until the replacement kit, joined 2026-11-18.
+        # off with bad RAM until the replacement kit, joined 2026-11-18. Reinstalled on a
+        # 1 TB drive 2026-11-20 (docs/runbooks/unity-ci-host.md#apply-the-play, a slot registers withheld).
         deskslim-1:
           host_tier: standard
           ansible_host: 192.168.1.19

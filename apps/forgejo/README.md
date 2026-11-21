@@ -80,9 +80,9 @@ Add or move a seat: change the host's Unity slots or `ci_caps` in `ansible/inven
 cd ansible && ansible-playbook playbooks/site.yml --limit <host> --tags forgejo-ci
 ```
 
-The play stops and removes the units of seats a host no longer has, and the dirs of the old per-slot lend seats (`unity-pool-<n>-forgejo[-<m>]`, hc-839); their registrations stay listed in Site Administration, Actions, Runners until deleted there.
+The play stops and removes the units of seats a host no longer has, and the dirs of the old per-slot lend seats (`unity-pool-<n>-forgejo[-<m>]`, hc-839). Forgejo's `cleanup_offline_runners` cron (`ansible/roles/forgejo-host/files/app.ini`) deletes any instance-level runner registration offline for more than 7 days, each midnight (not at start, so a restore does not delete every seat), so retired seats leave Site Administration, Actions, Runners on their own.
 
-Re-register a seat (a new instance, or its runner was deleted in the admin UI): remove `~linux-ci/small-forgejo-<n>/.runner` on the host and re-run the play. A new registration token, if needed:
+Re-register a seat (a new instance, its runner was deleted in the admin UI, or its host was off for more than 7 days and the cron deleted it): remove `~linux-ci/small-forgejo-<n>/.runner` on the host and re-run the play. A new registration token, if needed:
 
 ```bash
 ssh forge-hel1 docker compose -f /etc/forgejo/compose.yaml exec -u git forgejo \

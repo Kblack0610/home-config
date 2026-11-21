@@ -1644,13 +1644,6 @@ def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_
             if room - len(mates(s, lends[s]["seat"])) >= want.get(kind, 0):
                 room -= len(mates(s, lends[s]["seat"]))
                 back[s] = f"no {kind} job needs it"
-    # config.json jump_lends {kind: N}: that many lends of a short kind skip the age rule against GitHub
-    # jobs younger than jump_max_seconds, here and in reclaimed(), so a fan-in job created after the
-    # Unity queue formed does not wait it out (ucp-2881).
-    jump_max = cfg.get("jump_max_seconds", JUMP_MAX_SECONDS)
-    jumps = {k: max(n, 0) - sum(1 for s, (kind, _) in open_lends.items() if kind == k and s not in back)
-             for k, n in cfg.get("jump_lends", {}).items()}
-
     admitted = sum(1 for n, r in runners.items() if not r["withheld"] and serves_pool(cfg, r["host"], n))
 
     def unlend(slot, seat, why):
@@ -1708,10 +1701,8 @@ def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_
                 continue
             if not r["withheld"] and floor - 1 < cfg["pool_min_admitted"]:
                 continue
-            if rival(slot) >= oldest[kind]:
-                if jumps.get(kind, 0) <= 0 or rival(slot) >= jump_max:
-                    continue
-                jumps[kind] -= 1
+            if rival(slot) >= oldest[kind] and not jump_allowed(cfg, kind, rival(slot), open_lends, back, steps):
+                continue
             floor -= 0 if r["withheld"] else 1
             if not spare:
                 moved.add(host)
@@ -1723,6 +1714,16 @@ def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_
               if s["forge"] != "forgejo" and seat in seat_state and not seat_state[seat]["withheld"]
               and (s["slot"], seat_kind(cfg, seat)) not in granted]
     return per_seat(cfg, steps, mates, by_slot, seat_state)
+
+
+def jump_allowed(cfg, kind, wait, open_lends, back, steps):
+    """config.json jump_lends {kind: N}: while fewer than N lends of a short kind are open or lent this
+    cycle, one more skips the age rule against a GitHub job that has waited under jump_max_seconds, here
+    and in reclaimed(), so a fan-in job created after the Unity queue formed does not wait it out (ucp-2881)."""
+    held = sum(1 for s, (k, _) in open_lends.items() if k == kind and s not in back) \
+        + sum(1 for step in steps if step[0] == "lend" and seat_kind(cfg, step[2]) == kind)
+    return held < max(cfg.get("jump_lends", {}).get(kind, 0), 0) \
+        and wait < cfg.get("jump_max_seconds", JUMP_MAX_SECONDS)
 
 
 def reclaimed(cfg, runners, open_lends, lends, github_jobs, oldest):

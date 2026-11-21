@@ -118,8 +118,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: telemetry
             category: disk-health
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/ansible/roles/disk-health/README.md
             summary: "No SMART metrics from {{ $labels.host }}"
             description: >-
               Prometheus cannot scrape prometheus-smartctl-exporter on {{ $labels.host }}

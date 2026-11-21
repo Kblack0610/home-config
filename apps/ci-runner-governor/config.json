@@ -8,6 +8,8 @@
   "warm_idle_off_seconds": 2700,
   "override_on_max_hours": 12,
   "pack_keep_labels": ["unity-wide"],
+  "jump_lends": {"light": 1},
+  "jump_max_seconds": 900,
   "weights": {"percentile": 0.9, "window": "3d", "min_samples": 60, "floor": 0.1, "refresh_seconds": 3600},
   "defaults": {
     "min_admitted": 1,

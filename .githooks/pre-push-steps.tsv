@@ -21,6 +21,7 @@
 ^apps/ci-runner-governor/	-	python3 apps/ci-runner-governor/test_governor.py
 ^apps/ci-runner-governor/	-	python3 apps/ci-runner-governor/test_replay.py
 ^ansible/roles/github-actions-runner-linux/	-	python3 ansible/roles/github-actions-runner-linux/tests/test_runner_labels.py
+^ansible/roles/github-actions-runner-linux/	-	python3 ansible/roles/github-actions-runner-linux/tests/test_runner_retire.py
 ^ansible/roles/forgejo-runner-linux/	-	python3 ansible/roles/forgejo-runner-linux/tests/test_forgejo_seat.py
 ^ansible/roles/ci-host/	-	python3 ansible/roles/ci-host/tests/test_github_known_hosts.py
 ^(ansible/inventory\.yml|ansible/roles/host-identity/)	-	python3 ansible/roles/host-identity/tests/test_host_identity.py

@@ -31,7 +31,7 @@ spec:
             system: deploy
             category: node-health
           annotations:
-            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/host-tiers.md
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/node-crash-storms.md#a-host-hung-rebooted-or-went-notready
             summary: "Node down: {{ $labels.instance }} ({{ $labels.job }})"
             description: >-
               node-exporter target {{ $labels.instance }} (job {{ $labels.job }})
@@ -316,7 +316,7 @@ spec:
             system: deploy
             category: node-health
           annotations:
-            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/host-tiers.md
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/host-tiers.md#quarantine
             summary: "{{ $labels.node }} is quarantined (kblab.me/degraded): no new pods land on it"
             description: >-
               cluster-janitor tainted {{ $labels.node }} after a kernel fault, Ready

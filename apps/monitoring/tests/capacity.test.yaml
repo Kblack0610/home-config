@@ -445,7 +445,7 @@ tests:
         alertname: NodeMemoryPressure
         exp_alerts:
           - exp_labels: {alertname: NodeMemoryPressure, severity: critical, fleet: fix, system: deploy, category: capacity, instance: stalled}
-            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/host-tiers.md, summary: "stalled is stalled on memory 30% of the time"}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/node-crash-storms.md#oom-kills-which-process-and-cgroup, summary: "stalled is stalled on memory 30% of the time"}
 
   - name: cpu pressure
     interval: 1m
@@ -471,7 +471,7 @@ tests:
         alertname: NodeCpuStarved
         exp_alerts:
           - exp_labels: {alertname: NodeCpuStarved, severity: critical, fleet: fix, system: deploy, category: capacity, instance: starved}
-            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/host-tiers.md, summary: "Tasks on starved have waited for CPU for over an hour"}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/scripts/host-headroom.py, summary: "Tasks on starved have waited for CPU for over an hour"}
 
   - name: load per CPU warns past 1x for 15m and pages past 1.5x for 10m
     interval: 1m
@@ -502,14 +502,14 @@ tests:
         alertname: NodeLoadCritical
         exp_alerts:
           - exp_labels: {alertname: NodeLoadCritical, severity: critical, category: capacity, fleet: fix, system: deploy, instance: hot}
-            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/host-tiers.md, summary: "hot load is 2x its CPUs: stop work on it now"}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/scripts/host-headroom.py, summary: "hot load is 2x its CPUs: stop work on it now"}
       - eval_time: 16m
         alertname: NodeLoadHigh
         exp_alerts:
           - exp_labels: {alertname: NodeLoadHigh, severity: warning, category: capacity, fleet: fix, system: deploy, instance: hot}
-            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/host-tiers.md, summary: "hot load is 2x its CPUs for 15m: scripts/host-headroom.py, then move work off"}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/scripts/host-headroom.py, summary: "hot load is 2x its CPUs for 15m: scripts/host-headroom.py, then move work off"}
           - exp_labels: {alertname: NodeLoadHigh, severity: warning, category: capacity, fleet: fix, system: deploy, instance: warm}
-            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/host-tiers.md, summary: "warm load is 1.1x its CPUs for 15m: scripts/host-headroom.py, then move work off"}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/scripts/host-headroom.py, summary: "warm load is 1.1x its CPUs for 15m: scripts/host-headroom.py, then move work off"}
 
   - name: oom kills, a few warn and a storm pages
     interval: 5m
@@ -710,7 +710,7 @@ tests:
         alertname: NodeDiskMetricsStale
         exp_alerts:
           - exp_labels: {alertname: NodeDiskMetricsStale, severity: warning, fleet: fix, system: telemetry, category: capacity, instance: a, file: /var/lib/node-exporter-textfile/node_disk.prom}
-            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/node-disk-pressure.md, summary: "a has not updated its disk metrics for over an hour"}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/ansible/roles/node-disk-metrics/files/node-disk-metrics.sh, summary: "a has not updated its disk metrics for over an hour"}
 
   - name: a failed webhook pages, a healthy one does not
     interval: 1m
@@ -746,7 +746,7 @@ tests:
         alertname: DiskReclaimStale
         exp_alerts:
           - exp_labels: {alertname: DiskReclaimStale, severity: warning, fleet: fix, system: deploy, category: capacity, instance: a}
-            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/node-disk-pressure.md, summary: "a has not run a disk reclaim pass for over 8 days"}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/ansible/roles/macos-disk-reclaim/templates/reclaim-disk.sh.j2, summary: "a has not run a disk reclaim pass for over 8 days"}
 
   - name: a reclaim held off for a day warns, a run that clears inside the day does not
     interval: 1m
@@ -763,4 +763,4 @@ tests:
         alertname: DiskReclaimSkipped
         exp_alerts:
           - exp_labels: {alertname: DiskReclaimSkipped, severity: warning, fleet: fix, system: deploy, category: capacity, instance: a, reason: ci_running}
-            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/node-disk-pressure.md, summary: "Disk reclaim on a has been skipped for a day: ci_running"}
+            exp_annotations: {runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/ansible/roles/macos-disk-reclaim/templates/reclaim-disk.sh.j2, summary: "Disk reclaim on a has been skipped for a day: ci_running"}

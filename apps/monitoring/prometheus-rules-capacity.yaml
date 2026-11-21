@@ -335,7 +335,7 @@ spec:
             system: telemetry
             category: capacity
           annotations:
-            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/node-disk-pressure.md
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/ansible/roles/node-disk-metrics/files/node-disk-metrics.sh
             summary: "{{ $labels.instance }} has not updated its disk metrics for over an hour"
         # macos-disk-reclaim writes these on each pass, weekly at the least. A disk fills
         # quietly when the pass stops or stays skipped, as the mini's did in 2026-11.
@@ -348,7 +348,7 @@ spec:
             system: deploy
             category: capacity
           annotations:
-            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/node-disk-pressure.md
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/ansible/roles/macos-disk-reclaim/templates/reclaim-disk.sh.j2
             summary: "{{ $labels.instance }} has not run a disk reclaim pass for over 8 days"
         - alert: DiskReclaimSkipped
           expr: homelab_disk_reclaim_skipped == 1
@@ -359,7 +359,7 @@ spec:
             system: deploy
             category: capacity
           annotations:
-            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/node-disk-pressure.md
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/ansible/roles/macos-disk-reclaim/templates/reclaim-disk.sh.j2
             summary: "Disk reclaim on {{ $labels.instance }} has been skipped for a day: {{ $labels.reason }}"
 
     - name: homelab-capacity.compute
@@ -384,7 +384,7 @@ spec:
             system: deploy
             category: capacity
           annotations:
-            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/host-tiers.md
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/node-crash-storms.md#oom-kills-which-process-and-cgroup
             summary: "{{ $labels.instance }} is stalled on memory {{ $value | humanizePercentage }} of the time"
         # CI hosts run at full CPU by design, so this stays a warning. 13 in the replay.
         - alert: NodeCpuSaturated
@@ -406,7 +406,7 @@ spec:
             system: deploy
             category: capacity
           annotations:
-            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/host-tiers.md
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/scripts/host-headroom.py
             summary: "Tasks on {{ $labels.instance }} have waited for CPU for over an hour"
         # Load per CPU, which the PSI rules above miss: on 2026-11-13 hp-victus held
         # load15 41.5 on 24 threads (1.7x) and asus 29 on 16 (1.8x) with CPU PSI under
@@ -424,7 +424,7 @@ spec:
             fleet: fix
             system: deploy
           annotations:
-            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/host-tiers.md
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/scripts/host-headroom.py
             summary: "{{ $labels.instance }} load is {{ $value | humanize }}x its CPUs for 15m: scripts/host-headroom.py, then move work off"
         - alert: NodeLoadCritical
           expr: instance:node_load15_per_cpu:ratio > 1.5
@@ -435,7 +435,7 @@ spec:
             fleet: fix
             system: deploy
           annotations:
-            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/host-tiers.md
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/scripts/host-headroom.py
             summary: "{{ $labels.instance }} load is {{ $value | humanize }}x its CPUs: stop work on it now"
         - alert: NodeOomKill
           expr: increase(node_vmstat_oom_kill[1h]) > 0

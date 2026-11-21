@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Run one Music Assistant API command and print the JSON result.
+#   scripts/ma-api <command> [json-args]
+#   scripts/ma-api players/all
+#   scripts/ma-api config/providers/setup '{"provider_domain":"spotify_connect"}'
+# Logs in with the `music-assistant` rbw entry (the MA admin user) on every call and
+# revokes its login tokens on exit, so calls do not pile up tokens in auth.db.
+# Commands and their args: the @api_command decorators in the MA server source,
+# music_assistant/controllers/**.py inside the music-assistant pod.
+set -euo pipefail
+
+MA_URL="${MA_URL:-https://music.kblab.me}"
+TOKEN_NAME="home-config ma-api"
+cmd="${1:?usage: ma-api <command> [json-args]}"
+args="${2:-{\}}"
+
+user=$(rbw get --full music-assistant | sed -n 's/^username: //p')
+pass=$(rbw get music-assistant)
+token=$(curl -sf -m 10 "$MA_URL/api" -H 'content-type: application/json' \
+  --data "$(jq -nc --arg u "$user" --arg p "$pass" --arg n "$TOKEN_NAME" \
+    '{command:"auth/login",args:{username:$u,password:$p,device_name:$n}}')" \
+  | jq -er '.access_token // .token')
+
+call() {  # call <command> <json-args>
+  curl -sf -m 60 "$MA_URL/api" -H 'content-type: application/json' \
+    -H "authorization: Bearer $token" \
+    --data "$(jq -nc --arg c "$1" --argjson a "$2" '{command:$c,args:$a}')"
+}
+
+revoke_tokens() {
+  # The list is newest first and the newest is this call's own token: revoke
+  # oldest first so this token stays valid until the last revoke.
+  call auth/tokens '{}' | jq -r --arg n "$TOKEN_NAME" 'reverse | .[] | select(.name==$n) | .token_id' \
+    | while read -r id; do
+        call auth/token/revoke "$(jq -nc --arg i "$id" '{token_id:$i}')" >/dev/null || true
+      done
+}
+trap revoke_tokens EXIT
+
+call "$cmd" "$args"

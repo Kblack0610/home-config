@@ -53,6 +53,10 @@ Custom components (e.g. `ha-bambulab`) are installed via init containers with pi
 | Service health | Home Assistant, Traefik, and LiteLLM container metrics |
 | Mac monitoring | Mac Mini node exporter metrics |
 
+### What is enabled, disabled and unavailable
+
+[`scripts/ha-inventory.py`](../../scripts/ha-inventory.py) is the one read-only view of every integration (enabled or disabled, its load state, entity counts) and every enabled entity that reads unavailable, grouped by device, with registry entries nothing provides any more marked orphaned. A retired device that was never deleted shows up there before it pages: delete it in HA (Settings -> Devices), then drop it from the seeds in `deployment.yaml` and `config/pyscript/room_layout.yaml`. `--entities` lists every entity, `--grep TEXT` narrows to one device, `--json` feeds jq. Run it on the workstation: it needs rbw (entry "HASS token") and the `websockets` package.
+
 ### Site status (generated)
 
 `config/packages/site_status.yaml` holds one `binary_sensor` per site, read from the blackbox probes; `fleet_alerts.yaml` and `voice_health.yaml` use them. [`scripts/gen-ha-launcher.py`](../../scripts/gen-ha-launcher.py) writes it from the ingresses, together with the kblab.me front door and the probe list ([`apps/front-door/README.md`](../front-door/README.md)), so do not edit it by hand.

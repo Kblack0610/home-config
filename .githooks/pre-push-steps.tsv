@@ -31,6 +31,7 @@
 ^scripts/(eeg-review|test_eeg_review)\.py	-	python3 scripts/test_eeg_review.py
 ^scripts/(forgejo-secret-key-rotate|test_forgejo_secret_key_rotate)\.py	-	python3 scripts/test_forgejo_secret_key_rotate.py
 ^scripts/(forgejo-issue-index-raise|test_forgejo_issue_index_raise)\.py	-	python3 scripts/test_forgejo_issue_index_raise.py
+^scripts/(ha-inventory|test_ha_inventory)\.py	-	python3 scripts/test_ha_inventory.py
 ^(apps/home-assistant/|scripts/check-ha-packages\.py)	-	python3 scripts/check-ha-packages.py
 .	-	python3 scripts/check-secret-store.py
 ^apps/zomboid/	bash	apps/zomboid/tests/run.sh

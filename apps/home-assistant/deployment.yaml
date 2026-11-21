@@ -926,7 +926,7 @@ spec:
         # live. Schema mirrors HA core esphome/config_flow.py @ 2026.7:
         # data={device_name, host, port:6053, password:"", noise_psk:""};
         # unique_id = MAC (lowercase, colons); VERSION=1 MINOR_VERSION=1.
-        # Idempotent on domain+data.host. Extend PLUGS as the other 5 come online.
+        # Idempotent on domain+data.host. Add a plug here when it comes online.
         - name: seed-esphome
           image: ghcr.io/home-assistant/home-assistant:2026.9.4
           command:
@@ -941,7 +941,6 @@ spec:
 
               # (device_name, host, mac [lowercase, colons], title)
               PLUGS = [
-                  ("athom-smart-plug-v3-613888", "192.168.1.142", "fc:01:2c:61:38:88", "Athom Plug V3 613888"),
                   ("athom-smart-plug-v3-6043c8", "192.168.1.190", "fc:01:2c:60:43:c8", "Athom Plug V3 6043c8"),
                   ("athom-smart-plug-v3-6058b8", "192.168.1.153", "fc:01:2c:60:58:b8", "Athom Plug V3 6058b8"),
                   ("athom-smart-plug-v3-60a188", "192.168.1.233", "fc:01:2c:60:a1:88", "Athom Plug V3 60a188"),
@@ -2088,7 +2087,6 @@ spec:
                   ("switch.athom_smart_plug_v3_6043c8_switch", "UFO Light 1"),
                   ("switch.athom_smart_plug_v3_6058b8_switch", "Table Light"),
                   ("switch.athom_smart_plug_v3_60a188_switch", "Main Light"),
-                  ("switch.athom_smart_plug_v3_613888_switch", "Athom Plug 613888"),
               ]
 
               os.makedirs(os.path.dirname(ENTRIES), exist_ok=True)

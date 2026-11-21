@@ -7,6 +7,9 @@
       {"name": "cachyos-x8664-main-unity-pool-2", "caps": ["unity"]}
     ]},
     "deskslim-1": {"site": "local", "full": true, "slots": [
+      {"name": "deskslim-1-dotfiles-private-1", "caps": ["light"], "repo": "Kblack0610/.dotfiles-private", "borrows": "deskslim-1-unity-pool-1"},
+      {"name": "deskslim-1-gungan-speak-1", "caps": ["light"], "repo": "Kblack0610/gungan-speak", "borrows": "deskslim-1-unity-pool-2"},
+      {"name": "deskslim-1-personal-sites-1", "caps": ["light"], "repo": "Kblack0610/personal-sites", "borrows": "deskslim-1-unity-pool-3"},
       {"name": "deskslim-1-unity-pool-1", "caps": ["unity"]},
       {"name": "deskslim-1-unity-pool-2", "caps": ["unity"]},
       {"name": "deskslim-1-unity-pool-3", "caps": ["unity"]},

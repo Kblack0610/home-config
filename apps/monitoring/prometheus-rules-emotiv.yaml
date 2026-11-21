@@ -46,8 +46,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: deploy
             category: node-health
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/ansible/roles/emotiv-bridge/README.md
             summary: "Emotiv archive uploads from mac-mini are backed up ({{ $value | humanize1024 }}B or over an hour old)"
             description: "The bridge spool holds chunks the NAS has not received. The bridge log names the rsync exit code: ansible/roles/emotiv-bridge/README.md, Troubleshooting."
         # The Cortex app's license, read by the bridge on every connect. A dead license

@@ -33,9 +33,11 @@ tests:
           - exp_labels:
               severity: warning
               fleet: fix
+              system: deploy
               category: availability
               requested_model: fast
             exp_annotations:
+              runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/litellm/README.md
               summary: "LiteLLM route fast failure rate > 10% for 10m"
               description: "100% of requests to 'fast' are failing. Check `kubectl -n ai-gateway logs deploy/litellm` for auth, DB, budget or upstream errors."
       - eval_time: 30m
@@ -44,8 +46,10 @@ tests:
           - exp_labels:
               severity: warning
               fleet: fix
+              system: deploy
               category: availability
             exp_annotations:
+              runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/litellm/README.md
               summary: "LiteLLM proxy failure rate > 10% for 10m"
               description: "Across all virtual keys and models, 100% of requests are failing. Check `kubectl -n ai-gateway logs deploy/litellm` for auth, DB, or upstream errors."
 
@@ -63,9 +67,11 @@ tests:
           - exp_labels:
               severity: warning
               fleet: fix
+              system: deploy
               category: availability
               requested_model: go (glm-5.3)
             exp_annotations:
+              runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/litellm/README.md
               summary: "LiteLLM route go (glm-5.3) failure rate > 10% for 10m"
               description: "100% of requests to 'go (glm-5.3)' are failing. Check `kubectl -n ai-gateway logs deploy/litellm` for auth, DB, budget or upstream errors."
       - eval_time: 30m
@@ -74,8 +80,10 @@ tests:
           - exp_labels:
               severity: warning
               fleet: fix
+              system: deploy
               category: availability
             exp_annotations:
+              runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/litellm/README.md
               summary: "LiteLLM proxy failure rate > 10% for 10m"
               description: "Across all virtual keys and models, 100% of requests are failing. Check `kubectl -n ai-gateway logs deploy/litellm` for auth, DB, or upstream errors."
 

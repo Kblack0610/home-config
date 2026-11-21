@@ -97,6 +97,9 @@ AWS_STOP_PREFIX = "Server."
 FALLBACK_REASONS = ("capacity", "refused", "reclaim")
 # The budget's numbers move a few times a day and the API has no event, so one read an hour.
 BUDGET_POLL_SECONDS = 3600
+# jump_lends' bound when config.json leaves jump_max_seconds out: a GitHub job past this wait takes
+# a jump lend back like any other, so a light stream holds a Unity job up 15 minutes at most.
+JUMP_MAX_SECONDS = 900
 OVERRIDE_DIR = os.environ.get("GOVERNOR_OVERRIDE_DIR", "/override")
 # The override ConfigMap's contract, beside this file in git and in the pod's /app.
 with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "override.schema.json")) as _f:
@@ -1641,7 +1644,6 @@ def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_
             if room - len(mates(s, lends[s]["seat"])) >= want.get(kind, 0):
                 room -= len(mates(s, lends[s]["seat"]))
                 back[s] = f"no {kind} job needs it"
-
     admitted = sum(1 for n, r in runners.items() if not r["withheld"] and serves_pool(cfg, r["host"], n))
 
     def unlend(slot, seat, why):
@@ -1699,7 +1701,7 @@ def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_
                 continue
             if not r["withheld"] and floor - 1 < cfg["pool_min_admitted"]:
                 continue
-            if rival(slot) >= oldest[kind]:
+            if rival(slot) >= oldest[kind] and not jump_allowed(cfg, kind, rival(slot), open_lends, back, steps):
                 continue
             floor -= 0 if r["withheld"] else 1
             if not spare:
@@ -1714,6 +1716,16 @@ def lend_plan(cfg, hosts, runners, seat_state, waits, lends, leases, pins, last_
     return per_seat(cfg, steps, mates, by_slot, seat_state)
 
 
+def jump_allowed(cfg, kind, wait, open_lends, back, steps):
+    """config.json jump_lends {kind: N}: while fewer than N lends of a short kind are open or lent this
+    cycle, one more skips the age rule against a GitHub job that has waited under jump_max_seconds, here
+    and in reclaimed(), so a fan-in job created after the Unity queue formed does not wait it out (ucp-2881)."""
+    held = sum(1 for s, (k, _) in open_lends.items() if k == kind and s not in back) \
+        + sum(1 for step in steps if step[0] == "lend" and seat_kind(cfg, step[2]) == kind)
+    return held < max(cfg.get("jump_lends", {}).get(kind, 0), 0) \
+        and wait < cfg.get("jump_max_seconds", JUMP_MAX_SECONDS)
+
+
 def reclaimed(cfg, runners, open_lends, lends, github_jobs, oldest):
     """{slot: why} of the lends GitHub jobs take back. open_lends: {slot: (kind, busy seats)} of the lends
     not already going back; lends: lend_plan()'s, for those that are; github_jobs: [(age, labels)]; oldest: {kind: age}.
@@ -1722,8 +1734,15 @@ def reclaimed(cfg, runners, open_lends, lends, github_jobs, oldest):
     Unity slots lent while playground Tests waited 30 minutes (hc-766). Idle lends go first, and a returning
     lend is that job's slot already, so one job does not pull back every lend while the first drains.
     A lend whose kind has nothing waiting is not reclaimed: its jobs are the ones running, and the want
-    rule returns it once idle. Read as age -1, any GitHub job took it back minutes after its grant."""
+    rule returns it once idle. Read as age -1, any GitHub job took it back minutes after its grant.
+    A jump_lends kind's busiest N lends go back only to a job older than jump_max_seconds too, so a stream
+    of light jobs cannot hold one from a Unity job for good."""
     rivals, claimed = sorted(github_jobs, key=lambda j: -j[0]), set()
+    keep = set()
+    for k, n in cfg.get("jump_lends", {}).items():
+        keep.update(sorted((s for s, (kind, _) in open_lends.items() if kind == k),
+                           key=lambda s: (-open_lends[s][1], s))[:max(n, 0)])
+    jump_max = cfg.get("jump_max_seconds", JUMP_MAX_SECONDS)
 
     def claim(slot, older_than):
         r = runners.get(slot)
@@ -1739,7 +1758,7 @@ def reclaimed(cfg, runners, open_lends, lends, github_jobs, oldest):
     for slot, (kind, _) in sorted(open_lends.items(), key=lambda p: (p[1][1], p[0])):
         if kind not in oldest:
             continue
-        age = claim(slot, oldest[kind])
+        age = claim(slot, max(oldest[kind], jump_max) if slot in keep else oldest[kind])
         if age is not None:
             out[slot] = f"a GitHub job it takes has waited {int(age)}s, longer than any {kind} job"
     return out

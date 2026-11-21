@@ -18,8 +18,10 @@ tests:
           - exp_labels:
               severity: warning
               fleet: fix
+              system: deploy
               category: app
             exp_annotations:
+              runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/binks-api/README.md
               summary: "binks.chat: over 20% of chat turns end in an error"
               description: "15 error frames in the last 15m, over 20% of messages sent. Check binks-api logs (kubectl --context home-k3s -n binks-api logs deploy/binks-api) and BinksLLMErrors."
 
@@ -51,8 +53,10 @@ tests:
           - exp_labels:
               severity: warning
               fleet: fix
+              system: deploy
               category: app
             exp_annotations:
+              runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/binks-api/README.md
               summary: "binks.chat: over 20% of LLM calls fail"
               description: "15 failed LLM calls in the last 15m. By kind: sum by (model, kind) (increase(binks_llm_errors_total[15m])). key_issue_failed is the issuer key; stream and empty are the binks-chat routes in apps/litellm/config.yaml."
 

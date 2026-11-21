@@ -34,8 +34,10 @@ data:
             labels:
               severity: warning
               fleet: fix
+              system: deploy
               category: node-health
             annotations:
+              runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/node-crash-storms.md
               summary: "GPU driver fault on {{ $labels.host }}: {{ $value }} NVRM errors in 10m. hp-victus hung after this twice (2026-11-12, 11-13)"
           - alert: HostSoftLockup
             expr: |
@@ -43,8 +45,10 @@ data:
             labels:
               severity: critical
               fleet: fix
+              system: deploy
               category: node-health
             annotations:
+              runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/node-crash-storms.md#a-host-hung-rebooted-or-went-notready
               summary: "Kernel lockup or hung task on {{ $labels.host }}: {{ $value }} lines in 10m"
           - alert: HostNicDown
             expr: |

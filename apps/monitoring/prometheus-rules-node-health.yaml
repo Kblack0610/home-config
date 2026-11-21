@@ -28,8 +28,10 @@ spec:
           labels:
             severity: critical
             fleet: fix
+            system: deploy
             category: node-health
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/runbooks/node-crash-storms.md#a-host-hung-rebooted-or-went-notready
             summary: "Node down: {{ $labels.instance }} ({{ $labels.job }})"
             description: >-
               node-exporter target {{ $labels.instance }} (job {{ $labels.job }})
@@ -43,8 +45,10 @@ spec:
           labels:
             severity: critical
             fleet: fix
+            system: telemetry
             category: node-health
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/monitoring/README.md
             summary: "node-exporter scrape job is absent"
             description: >-
               No node-exporter (DaemonSet) targets are being scraped at all.
@@ -60,8 +64,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: telemetry
             category: node-health
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/monitoring/README.md
             summary: "{{ $labels.job }} scrape job is absent"
             description: >-
               No {{ $labels.job }} targets are being scraped, so NodeDown is blind
@@ -109,8 +115,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: deploy
             category: node-health
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/ansible/roles/time-sync/README.md
             summary: "Clock not syncing on {{ $labels.instance }}"
             description: >-
               {{ $labels.instance }} reports node_timex_sync_status=0 - no NTP sync
@@ -129,8 +137,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: deploy
             category: node-health
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/ansible/roles/time-sync/README.md
             summary: "Clock skew on {{ $labels.instance }}"
             description: >-
               {{ $labels.instance }} disagrees with the cluster's mean clock by
@@ -198,8 +208,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: deploy
             category: node-health
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/ansible/roles/thermal-cap/README.md
             summary: "CPU hot on {{ $labels.instance }} (peaks of {{ $value }}C for 10m)"
             description: >-
               The CPU package on {{ $labels.instance }} has peaked above 90C in
@@ -301,8 +313,10 @@ spec:
           labels:
             severity: critical
             fleet: fix
+            system: deploy
             category: node-health
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/host-tiers.md#quarantine
             summary: "{{ $labels.node }} is quarantined (kblab.me/degraded): no new pods land on it"
             description: >-
               cluster-janitor tainted {{ $labels.node }} after a kernel fault, Ready
@@ -331,8 +345,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: deploy
             category: node-health
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/ansible/roles/k3s-agent/README.md
             summary: "{{ $labels.node }} runs k3s {{ $labels.kubelet_version }}, not the apiserver's version"
             description: >-
               The kubelet on {{ $labels.node }} is {{ $labels.kubelet_version }} and

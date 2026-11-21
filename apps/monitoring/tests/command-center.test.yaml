@@ -378,8 +378,9 @@ tests:
       - eval_time: 50m
         alertname: AgentFeedFrozen
         exp_alerts:
-          - exp_labels: {severity: critical, fleet: fix, domain: agents, component: feed}
+          - exp_labels: {severity: critical, fleet: fix, system: telemetry, domain: agents, component: feed}
             exp_annotations:
+              runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/monitoring/README.md
               summary: No host has published the agent feed in 30 minutes, so every watch, runner and queue number is frozen
               runbook: ~/.config/agentctl/SENTINEL.md (dotfiles-private), "Operate"
       - eval_time: 50m

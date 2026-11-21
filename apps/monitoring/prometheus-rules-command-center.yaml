@@ -283,7 +283,9 @@ spec:
           labels:
             severity: critical
             fleet: fix
+            system: telemetry
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/monitoring/README.md
             summary: No host has published the agent feed in 30 minutes, so every watch, runner and queue number is frozen
             runbook: ~/.config/agentctl/SENTINEL.md (dotfiles-private), "Operate"
         - alert: SentinelSilent

@@ -78,8 +78,9 @@ gh_runner_withheld_labels: []
 gh_runner_withheld_label: ""
 # Labels only the governor sets (its lend mark, unity-lent): a runner carrying one keeps it.
 gh_runner_kept_labels: []
-# Register withheld (gh_runner_withheld_label in place of the governed labels), for a seat that
-# runs only once the governor lends it a slot: it never takes a job before the governor sees it.
+# Register withheld (gh_runner_withheld_label in place of the governed labels), for a runner
+# that runs only once the governor admits it or lends it a slot: it never takes a job before the
+# governor sees it.
 gh_runner_register_withheld: false
 
 # System packages mirroring what platform/tools/setup-mac-runner.sh installs on

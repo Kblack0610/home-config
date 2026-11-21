@@ -35,8 +35,10 @@ spec:
             # quiet for half a day.
             severity: critical
             fleet: fix
+            system: deploy
             category: site-availability
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/public-sites.md
             summary: "Public site down: {{ $labels.instance }}"
             description: "{{ $labels.instance }} has failed its blackbox probe for 5m. Check the backing pod is Ready and on a node whose architecture matches its image."
 
@@ -60,7 +62,9 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: security
             category: site-availability
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/docs/public-sites.md
             summary: "TLS cert expiring: {{ $labels.instance }}"
             description: "The certificate for {{ $labels.instance }} expires in {{ printf \"%.0f\" $value }} days. cert-manager should renew at 30 days, so this firing means renewal is stuck."

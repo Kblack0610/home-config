@@ -62,8 +62,9 @@ tests:
       - eval_time: 110m
         alertname: EmotivUploadBacklog
         exp_alerts:
-          - exp_labels: {alertname: EmotivUploadBacklog, severity: warning, fleet: fix, category: node-health, topic: emotiv_mini_bridge, job: mqtt2prom}
+          - exp_labels: {alertname: EmotivUploadBacklog, severity: warning, fleet: fix, system: deploy, category: node-health, topic: emotiv_mini_bridge, job: mqtt2prom}
             exp_annotations:
+              runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/ansible/roles/emotiv-bridge/README.md
               summary: "Emotiv archive uploads from mac-mini are backed up (4.883kiB or over an hour old)"
               description: "The bridge spool holds chunks the NAS has not received. The bridge log names the rsync exit code: ansible/roles/emotiv-bridge/README.md, Troubleshooting."
 
@@ -80,8 +81,9 @@ tests:
       - eval_time: 20m
         alertname: EmotivUploadBacklog
         exp_alerts:
-          - exp_labels: {alertname: EmotivUploadBacklog, severity: warning, fleet: fix, category: node-health, topic: emotiv_mini_bridge, job: mqtt2prom}
+          - exp_labels: {alertname: EmotivUploadBacklog, severity: warning, fleet: fix, system: deploy, category: node-health, topic: emotiv_mini_bridge, job: mqtt2prom}
             exp_annotations:
+              runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/ansible/roles/emotiv-bridge/README.md
               summary: "Emotiv archive uploads from mac-mini are backed up (572.2MiB or over an hour old)"
               description: "The bridge spool holds chunks the NAS has not received. The bridge log names the rsync exit code: ansible/roles/emotiv-bridge/README.md, Troubleshooting."
 

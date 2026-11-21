@@ -133,8 +133,9 @@ tests:
       - eval_time: 40m
         alertname: SmartExporterDown
         exp_alerts:
-          - exp_labels: {severity: warning, fleet: fix, category: disk-health, job: smartctl-exporter, host: ms-a2, instance: "192.168.1.28:9633"}
+          - exp_labels: {severity: warning, fleet: fix, system: telemetry, category: disk-health, job: smartctl-exporter, host: ms-a2, instance: "192.168.1.28:9633"}
             exp_annotations:
+              runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/ansible/roles/disk-health/README.md
               summary: "No SMART metrics from ms-a2"
               description: "Prometheus cannot scrape prometheus-smartctl-exporter on ms-a2 (192.168.1.28:9633). Check the unit there; ansible role disk-health installs and starts it."
 
@@ -147,8 +148,9 @@ tests:
       - eval_time: 40m
         alertname: SmartExporterDown
         exp_alerts:
-          - exp_labels: {severity: warning, fleet: fix, category: disk-health, job: smartctl-exporter}
+          - exp_labels: {severity: warning, fleet: fix, system: telemetry, category: disk-health, job: smartctl-exporter}
             exp_annotations:
+              runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/ansible/roles/disk-health/README.md
               summary: "No SMART metrics from "
               description: "Prometheus cannot scrape prometheus-smartctl-exporter on  (). Check the unit there; ansible role disk-health installs and starts it."
 

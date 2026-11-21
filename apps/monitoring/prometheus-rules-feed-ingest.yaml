@@ -21,8 +21,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: deploy
             category: feeds
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/feed-ingest/README.md
             summary: "feed-ingest source {{ $labels.source }} has not polled successfully for 3 cadences"
             description: >-
               Check the feed-ingest pod log for that source's poll errors (apps/feed-ingest/README.md,
@@ -35,8 +37,10 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: telemetry
             category: feeds
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/feed-ingest/README.md
             summary: "feed-ingest exports no metrics: the pod is down or every source failed to start"
 
         - alert: FeedIngestPipelineErrors
@@ -44,6 +48,8 @@ spec:
           labels:
             severity: warning
             fleet: fix
+            system: deploy
             category: feeds
           annotations:
+            runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/feed-ingest/README.md
             summary: "feed-ingest failed to write {{ $labels.source }} items to the ledger in the last 30 minutes"

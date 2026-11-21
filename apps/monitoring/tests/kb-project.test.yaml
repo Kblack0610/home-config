@@ -183,9 +183,11 @@ tests:
           - exp_labels:
               severity: warning
               fleet: fix
+              system: telemetry
               category: availability
               source: game-registry
             exp_annotations:
+              runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/monitoring/README.md
               summary: "Department tabs: source game-registry has had no numbers for a day"
               description: "The scrape behind game-registry has been down for 24 hours, so the Analytics, Support, Money and Marketing tabs of the products it feeds read stale or empty."
       # binks-api went down for 100 steps (8h20m) and came back: it never pages. A source
@@ -196,9 +198,11 @@ tests:
           - exp_labels:
               severity: warning
               fleet: fix
+              system: telemetry
               category: availability
               source: game-registry
             exp_annotations:
+              runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/monitoring/README.md
               summary: "Department tabs: source game-registry has had no numbers for a day"
               description: "The scrape behind game-registry has been down for 24 hours, so the Analytics, Support, Money and Marketing tabs of the products it feeds read stale or empty."
 
@@ -247,9 +251,11 @@ tests:
           - exp_labels:
               severity: warning
               fleet: fix
+              system: telemetry
               category: availability
               source: litellm
             exp_annotations:
+              runbook_url: https://git.kennethblack.me/kblack0610/home-config/src/branch/master/apps/monitoring/README.md
               summary: "Department tabs: source litellm has had no numbers for a day"
               description: "The scrape behind litellm has been down for 24 hours, so the Analytics, Support, Money and Marketing tabs of the products it feeds read stale or empty."
 

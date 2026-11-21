@@ -2439,21 +2439,33 @@ class LendTest(unittest.TestCase):
 
     def test_weights_come_from_the_p90_share_of_the_smallest_slot_and_a_thin_kind_has_none(self):
         governor.WEIGHTS.update(at=None, by_kind={})
-        cfg = {**LCFG, "weights": {"percentile": 0.9, "window": "3d", "min_samples": 60, "floor": 0.1,
-                                   "refresh_seconds": 3600},
-               "seats": {FJ_SEAT: {**LCFG["seats"][FJ_SEAT], "cpus": 6, "memory_gb": 14},
-                         REPO_SEAT: {**LCFG["seats"][REPO_SEAT], "cpus": 6, "memory_gb": 14}}}
-        rows = {"cc:job_kind_cores": [("forgejo", 1.8)], "cc:job_kind_mem": [("forgejo", 2 * 2 ** 30)]}
+        cfg = {**LCFG, "seats": {FJ_SEAT: {**LCFG["seats"][FJ_SEAT], "cpus": 6, "memory_gb": 14},
+                                 REPO_SEAT: {**LCFG["seats"][REPO_SEAT], "cpus": 6, "memory_gb": 14}}}
+        rows = {"cc:job_kind_cores": [("forgejo", [1.8] * 60), ("repo", [6.0] * 59)],
+                "cc:job_kind_mem": [("forgejo", [2 * 2 ** 30] * 60)]}
 
-        def prom(q):  # a kind under min_samples is filtered out by the query itself: repo has no row
+        def prom_range(q, start, end, step):  # repo's 59 samples are under min_samples: no weight
             rule = next(r for r in rows if r in q)
-            return [{"metric": {"kind": k}, "value": [0, str(v)]} for k, v in rows[rule]]
-        with mock.patch.object(governor, "prom", prom), mock.patch("builtins.print"):
+            return [{"metric": {"kind": k}, "values": [[t, str(v)] for t, v in enumerate(vs)]} for k, vs in rows[rule]]
+        with mock.patch.object(governor, "prom_range", prom_range), mock.patch("builtins.print"):
             self.assertEqual(governor.kind_weights(cfg, 1000), {"forgejo": 0.3})  # cores 1.8/6 beats mem 2/14
-            rows["cc:job_kind_cores"] = [("forgejo", 0.1)]
+            rows["cc:job_kind_cores"] = [("forgejo", [0.1] * 60)]
             rows["cc:job_kind_mem"] = []
             self.assertEqual(governor.kind_weights(cfg, 1100), {"forgejo": 0.3})  # held until the refresh is due
             self.assertEqual(governor.kind_weights(cfg, 1000 + 3600), {"forgejo": 0.1})  # floor
+        governor.WEIGHTS.update(at=None, by_kind={})
+
+    def test_one_busy_runner_does_not_set_its_kinds_weight(self):
+        # hc-823: one runner ran light jobs at a whole slot's 6 cores for 70 steps, nine others at 1 core
+        # for 630. The p90 job uses 1.5 cores (0.25 of the slot); the busiest runner's own p90 read 1.0.
+        governor.WEIGHTS.update(at=None, by_kind={})
+        cfg = {**LCFG, "seats": {FJ_SEAT: {**LCFG["seats"][FJ_SEAT], "cpus": 6, "memory_gb": 14}}}
+        series = [{"metric": {"runner": "busy", "kind": "forgejo"}, "values": [[t, "6"] for t in range(70)]}]
+        series += [{"metric": {"runner": f"r{n}", "kind": "forgejo"}, "values": [[t, "1"] for t in range(70)]}
+                   for n in range(9)]
+        with mock.patch.object(governor, "prom_range", lambda q, *a: series if "cores" in q else []), \
+                mock.patch("builtins.print"):
+            self.assertEqual(governor.kind_weights(cfg, 1000), {"forgejo": 0.25})
         governor.WEIGHTS.update(at=None, by_kind={})
 
     def test_every_kind_exports_its_weight_and_an_unmeasured_one_reads_one(self):

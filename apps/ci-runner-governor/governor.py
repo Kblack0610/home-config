@@ -273,6 +273,25 @@ def prom(query):
     return body["data"]["result"]
 
 
+def prom_range(query, start, end, step):
+    """Every sample of query's series from start to end at step: query_range's result."""
+    url = f"{PROM}/api/v1/query_range?" + urllib.parse.urlencode(
+        {"query": query, "start": start, "end": end, "step": step})
+    with urllib.request.urlopen(url, timeout=30) as r:
+        body = json.load(r)
+    if body.get("status") != "success":
+        raise ValueError(f"prometheus: {body.get('error', 'query failed')}")
+    return body["data"]["result"]
+
+
+def percentile(xs, p):
+    """The p quantile of xs, linear between ranks, as scripts/ci-pool-idle.py pct() reads it."""
+    xs = sorted(xs)
+    k = (len(xs) - 1) * p
+    lo = int(k)
+    return xs[lo] + (xs[min(lo + 1, len(xs) - 1)] - xs[lo]) * (k - lo)
+
+
 def by_host(result):
     return {r["metric"].get("nodename") or r["metric"].get("host"): float(r["value"][1]) for r in result}
 
@@ -1398,8 +1417,10 @@ WEIGHTS = {"at": None, "by_kind": {}}
 def kind_weights(cfg, now):
     """{kind: weight}: each kind's measured share of the slot its seats borrow (hc-666), the larger
     of its p90 cores over the slot's CPUs and its p90 memory over the slot's MemoryMax, clamped to
-    [floor, 1]. From the cc:job_kind_* rules (command-center), refreshed every refresh_seconds. The
-    smallest slot of the kind's seats sizes it and the busiest runner's p90 is the figure, so a wrong
+    [floor, 1]. From the cc:job_kind_* rules (command-center), refreshed every refresh_seconds. A
+    sample is one busy runner at one step_seconds step over window_seconds, and the p90 is over every
+    sample of the kind pooled: the p90 job's use, not the busiest runner's (hc-823), the same samples
+    scripts/ci-kind-weights.py tabulates. The smallest slot of the kind's seats sizes it, so a wrong
     weight errs toward fewer seats. A kind with fewer than min_samples samples, or no slot size,
     has none: pack() reads weight 1, one job per slot. A failed refresh keeps the last."""
     w = cfg["weights"]
@@ -1408,15 +1429,15 @@ def kind_weights(cfg, now):
     out = {}
     try:
         for series, size in (("cores", "cpus"), ("mem", "memory_gb")):
-            rule = f"cc:job_kind_{series}"
-            rows = prom(f'max by (kind) (quantile_over_time({w["percentile"]}, {rule}[{w["window"]}]) '
-                        f'and count_over_time({rule}[{w["window"]}]) >= {w["min_samples"]})')
-            for r in rows:
-                kind = r["metric"].get("kind")
+            pooled = {}
+            for r in prom_range(f"max by (runner, kind) (cc:job_kind_{series})",
+                                now - w["window_seconds"], now, w["step_seconds"]):
+                pooled.setdefault(r["metric"].get("kind"), []).extend(float(v) for _, v in r["values"])
+            for kind, xs in pooled.items():
                 sizes = [s[size] for n, s in cfg["seats"].items() if weight_kind(cfg, n) == kind and s.get(size)]
-                if sizes:
+                if sizes and len(xs) >= w["min_samples"]:
                     cap = min(sizes) * (2 ** 30 if size == "memory_gb" else 1)
-                    out[kind] = max(out.get(kind, 0), float(r["value"][1]) / cap)
+                    out[kind] = max(out.get(kind, 0), percentile(xs, w["percentile"]) / cap)
     except API_ERRORS as e:
         print(f"weights not refreshed, keeping {WEIGHTS['by_kind']}: {e}", flush=True)
         return WEIGHTS["by_kind"]

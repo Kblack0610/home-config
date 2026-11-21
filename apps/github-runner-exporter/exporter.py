@@ -131,9 +131,9 @@ def load_topology(path):
 
 RENDERED = load_topology(os.environ.get("TOPOLOGY", "/topology/topology.json"))
 TOPOLOGY = RENDERED["hosts"]
-# slot name -> {host, caps, repo, forge, borrows}
+# slot name -> {host, caps, repo, forge, borrows, slice}
 SLOTS = {s["name"]: {"host": h, "caps": s["caps"], "repo": s.get("repo"), "forge": s.get("forge", "github"),
-                     "borrows": s.get("borrows")}
+                     "borrows": s.get("borrows"), "slice": s.get("slice")}
          for h, e in TOPOLOGY.items() for s in e["slots"]}
 TOPOLOGY_HOSTS = sorted(TOPOLOGY, key=len, reverse=True)
 # Repos whose repo-scoped runners, active runs and recent runs are read: RUN_REPOS, plus
@@ -400,12 +400,12 @@ def host_of(name, labels):
 
 def job_kind(name, runner_labels, job_labels):
     """The kind of job a busy runner runs, for ci_runner_job: forgejo for a Forgejo seat, repo for
-    a repo runner on a borrowed slot, else the pool the job asks for, else the runner's one cap.
+    a repo runner on a borrowed slot or a standing slice, else the pool the job asks for, else the runner's one cap.
     None when that leaves it open (a slot of several caps on a job whose labels name none)."""
     slot = SLOTS.get(name, {})
     if slot.get("forge") == "forgejo":
         return "forgejo"
-    if slot.get("repo") and slot.get("borrows"):
+    if slot.get("repo") and (slot.get("borrows") or slot.get("slice")):
         return "repo"
     kind = pool_of(job_labels)
     if kind != "other":

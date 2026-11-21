@@ -225,6 +225,10 @@ class ExporterTest(unittest.TestCase):
         seat = {"host": "box", "caps": ["light"], "repo": "acme/web", "forge": "github", "borrows": "box-unity-pool-1"}
         with mock.patch.dict(exporter.SLOTS, {"box-light-1": seat}):
             self.assertEqual(exporter.job_kind("box-light-1", ["self-hosted", "light"], ["self-hosted", "light"]), "repo")
+        # A standing seat of the repo, in the host's small-job slice, is repo too.
+        standing = {**seat, "borrows": None, "slice": "small"}
+        with mock.patch.dict(exporter.SLOTS, {"box-light-1": standing}):
+            self.assertEqual(exporter.job_kind("box-light-1", ["self-hosted", "light"], ["self-hosted", "light"]), "repo")
 
     def test_runner_rows_carry_their_labels_offline_too(self):
         # ci-runner-governor reads these to tell which waiting jobs a stopped host could take.

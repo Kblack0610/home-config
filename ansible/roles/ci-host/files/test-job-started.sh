@@ -65,7 +65,17 @@ end "$game"; echo boot-c > "$t/boot"; run "$game" 1
 ok "a reboot between jobs keeps the Library" '[ -e "$game/Library/warm" ]'
 mkdir -p "$t/elsewhere/Library"; echo "boot-a $t/elsewhere" > "$home/.ci-job-boot"; run "$game" 1
 ok "a stamp naming a path outside the slot's HOME is ignored" '[ -d "$t/elsewhere/Library" ] && [ -e "$game/Library/warm" ]'
-end "$game"; echo boot-a > "$t/boot"
+run "$game" 1; mkdir -p "$plat/stuck"
+PATH="$t/bin:$PATH" end "$plat"; ok "a job end whose cleanup fails has still removed the stamp" '[ ! -e "$home/.ci-job-boot" ]'
+rm -rf "$plat/stuck"; (HOME="$home" GITHUB_WORKSPACE="$game" "$t/fresh" --job-hook >/dev/null 2>&1)
+ok "a job hook call with no event writes no stamp" '[ ! -e "$home/.ci-job-boot" ]'
+run "$game" 1; CI_BOOT_ID_FILE="$t/no-such-file" run "$game" 1
+ok "a job start that cannot read the boot id removes the stamp" '[ ! -e "$home/.ci-job-boot" ]'
+mkdir -p "$t/bin2"; printf '#!/bin/sh\ncase "$*" in *Library*) exit 1;; esac\nexec %s "$@"\n' "$real_rm" > "$t/bin2/rm"; chmod +x "$t/bin2/rm"
+run "$game" 1; echo boot-d > "$t/boot"
+PATH="$t/bin2:$PATH" HOME="$home" GITHUB_WORKSPACE="$game" CI_SLOT_UNITY=1 "$t/hook" 2>"$t/err" >/dev/null
+ok "a torn Library the slot cannot remove fails the job start and names it" '[ $? -ne 0 ] && grep -q "could not remove $game/.*Library" "$t/err"'
+rm -rf "$game/Library"; end "$game"; echo boot-a > "$t/boot"
 
 # A light job on a Unity slot: ci-fresh-workspace moves the checkout's untracked state (Library and
 # the rest) aside, the job's clean checkout runs on the tracked tree, and the job-end hook puts the

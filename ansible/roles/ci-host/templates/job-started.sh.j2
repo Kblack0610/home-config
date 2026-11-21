@@ -8,8 +8,9 @@
 # ci-fresh-workspace --job-hook, which owns the workspace rules: it puts back the untracked state a light
 # job parked, removes ~/setup-pnpm (3G, reinstalled by pnpm/action-setup every run), keeps a Unity
 # project's workspace for its warm Library and empties any other, since the workflows were
-# written for a fresh VM. It also drops a Library the host's crash tore mid-job (the boot stamp). The end-of-job pass frees space instead of leaving it on an idle slot
-# (docs/runbooks/node-disk-pressure.md); the start pass catches a job whose end never ran.
+# written for a fresh VM. The end-of-job pass frees space instead of leaving it on an idle slot
+# (docs/runbooks/node-disk-pressure.md); the start pass catches a job whose end never ran, and
+# drops a Library the host's crash tore under it (the boot stamp, passed the event as its argument).
 #
 # A file the slot cannot delete (root-owned, from a `docker run` without --user) fails the next
 # job loudly at its start instead of corrupting it; at job end it is logged, never failing a job

@@ -43,12 +43,26 @@ drop_torn_libraries() {
   unity_projects "$torn" | while IFS= read -r v; do
     lib="${v%/ProjectSettings/ProjectVersion.txt}/Library"
     [ -e "$lib" ] || continue
-    rm -rf -- "$lib"
+    # The loop is a subshell, so exit fails the pipeline and, through set -e, the job start.
+    rm -rf -- "$lib" || { echo "ci-fresh-workspace: could not remove ${lib}, torn when the host went down during the last job in ${torn}" >&2; exit 1; }
     echo "ci-fresh-workspace: the host went down during the last job in ${torn}; removed ${lib}, which a hard reset leaves torn"
   done
 }
+# $1 is the hook's event, start or end; any other value leaves the stamp alone. It runs before the
+# rest of the hook, so a job end whose cleanup fails has still cleared its stamp.
+job_stamp() {
+  case "$1" in
+    end) rm -f -- "$stamp" ;;
+    start)
+      if [ -z "$boot_id" ]; then rm -f -- "$stamp"; return 0; fi
+      drop_torn_libraries
+      printf '%s %s\n' "$boot_id" "$ws" > "$stamp"
+      ;;
+  esac
+}
 
 if [ "${1:-}" = --job-hook ]; then
+  job_stamp "${2:-}"
   # <repo>/<repo>.paths lists what was parked, NUL-separated, written before any move.
   for list in "$park"/*/*.paths; do
     [ -f "$list" ] || continue
@@ -69,12 +83,6 @@ if [ "${1:-}" = --job-hook ]; then
     rm -rf -- "$tree" "$list" "$list.new"
   done
   rm -rf -- "$HOME/setup-pnpm"
-  if [ "${2:-}" = end ]; then
-    rm -f -- "$stamp"
-  elif [ -n "$boot_id" ]; then
-    drop_torn_libraries
-    printf '%s %s\n' "$boot_id" "$ws" > "$stamp"
-  fi
   [ -d "$ws" ] || exit 0
   if unity_project "$ws"; then
     echo "ci-fresh-workspace: ${ws} holds a Unity project; kept"

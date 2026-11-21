@@ -372,12 +372,13 @@ all:
           # ms-a2 while host-headroom.py rates it FULL. borrows: the Unity test slot it runs on;
           # the renderer registers <host>-<name>-1 and on, one seat per MIN_JOB_CORES of that slot,
           # each withheld until the governor lends it the slot and admits as many as the measured
-          # repo weight fits, so it adds jobs, never cores (apps/ci-runner-governor, "Lending"). Forgejo seats
+          # repo weight fits, so it adds jobs, never cores (apps/ci-runner-governor, "Lending"). seats: caps
+          # that count for a repo heavier than the shared repo weight (its Next.js builds). Forgejo seats
           # need no entry: the renderer puts one on every lendable slot whose host carries forgejo.
           ci_repo_runners: &personal_repo_runners
             - {repo: Kblack0610/.dotfiles-private, name: dotfiles-private, borrows: 1}
-            - {repo: Kblack0610/gungan-speak, name: gungan-speak, borrows: 2}
-            - {repo: Kblack0610/personal-sites, name: personal-sites, borrows: 3}
+            - {repo: Kblack0610/gungan-speak, name: gungan-speak, borrows: 2, seats: 1}
+            - {repo: Kblack0610/personal-sites, name: personal-sites, borrows: 3, seats: 1}
         deskslim-1:
           unity_ci_slots: 3
           unity_ci_full: true

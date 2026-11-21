@@ -55,7 +55,7 @@ jobs:
           rm planted-count.out
       - name: Negative control - the topology check fails on a repo runner that borrows a slot its host does not have
         run: |
-          python3 -c 's = open("ansible/inventory.yml").read(); t = s.replace("name: gungan-speak, borrows: 2}", "name: gungan-speak, borrows: 9}", 1); assert t != s, "the plant did not apply"; open("planted-borrow.yml", "w").write(t)'
+          python3 -c 's = open("ansible/inventory.yml").read(); t = s.replace("name: gungan-speak, borrows: 2,", "name: gungan-speak, borrows: 9,", 1); assert t != s, "the plant did not apply"; open("planted-borrow.yml", "w").write(t)'
           rc=0; python3 scripts/render-ci-topology.py --check --inventory planted-borrow.yml > planted-borrow.out 2>&1 || rc=$?
           rm planted-borrow.yml; cat planted-borrow.out
           [ "$rc" -ne 0 ] || { echo "the check passed a repo runner on no lendable slot"; exit 1; }

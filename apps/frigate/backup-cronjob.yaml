@@ -116,9 +116,9 @@ spec:
                   mountPath: /data
                 - name: backup
                   mountPath: /backup
-          # Its local-path PV pins it to one node, so it runs there even when that
-          # node is quarantined: the backup is how its state leaves the node
-          # (docs/host-tiers.md, Quarantine).
+          # Pinned to one node (its local-path PV or its nodeSelector), so it runs
+          # there even when that node is quarantined: the backup is how the node's
+          # state leaves it (docs/host-tiers.md, Quarantine).
           tolerations:
             - key: kblab.me/degraded
               operator: Exists

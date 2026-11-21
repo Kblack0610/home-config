@@ -34,7 +34,11 @@
   ansible.builtin.file:
     path: "{{ item }}"
     state: absent
-  loop: "{{ _forgejo_retired_units + (_forgejo_found.results[1].files | map(attribute='path') | list) }}"
+  # A kept seat's dir never goes, whatever the topology names it.
+  loop: >-
+    {{ _forgejo_retired_units + (_forgejo_found.results[1].files | map(attribute='path')
+       | reject('in', forgejo_seat_names | map('regex_replace', '^' ~ inventory_hostname ~ '-', forgejo_runner_user_home ~ '/') | list)
+       | list) }}
   register: _forgejo_removed
 
 - name: Reload systemd after a retired unit

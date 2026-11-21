@@ -4,4 +4,5 @@
     name: unity-accelerator.service
     state: restarted
     daemon_reload: true
-  when: not ansible_check_mode
+  # tasks/accelerator.yml: in --check a unit the host lacks does not exist yet.
+  when: not (ansible_check_mode and not _unity_ci_accelerator_unit.stat.exists)
